@@ -611,6 +611,8 @@ def fetch_kepler_llc_from_archive(
             target_dirs = list_target_dirs(bucket)
             if randomize:
                 rng.shuffle(target_dirs)
+                targets_per_bucket = rng.randint(2, 8)  # Vary targets pulled per bucket
+                target_dirs = target_dirs[:targets_per_bucket]
         except Exception as e:
             print("Skipping bucket:", bucket, "|", e)
             continue
