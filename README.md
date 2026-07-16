@@ -1,14 +1,14 @@
-# 🌍 Exoplanet Transit Detection System
+# Exoplanet Transit Detection System
 
 A full-stack web application for automated detection and analysis of exoplanet transits using NASA's Kepler mission data.
 
-## 🎯 Project Overview
+## Project Overview
 
 This application implements a machine learning pipeline to detect periodic dimming patterns in stellar light curves—the telltale signature of exoplanets orbiting distant stars. By analyzing photometric data from the Kepler Space Telescope, the system identifies candidate transits, ranks them by scientific merit, and provides actionable insights for astronomical research.
 
 **Live Demo:** [Deploy to Render](#deployment)
 
-## 🔬 Scientific Methodology
+## Scientific Methodology
 
 ### Algorithm Pipeline
 
@@ -37,7 +37,7 @@ This application implements a machine learning pipeline to detect periodic dimmi
    - Machine-learned weighting to prioritize scientifically viable candidates
    - Generates human-readable explanations for each score
 
-## 💻 Technology Stack
+## Technology Stack
 
 ### Backend
 - **Flask 2.3.3** - Python web framework
@@ -60,7 +60,7 @@ This application implements a machine learning pipeline to detect periodic dimmi
 - **SQLite** - Ephemeral database (production-ready for multi-database support)
 - **GitHub** - Version control and CI/CD integration
 
-## 🚀 Features
+## Features
 
 ### Web Interface
 - **Pipeline Dashboard** - Configure detection parameters in real-time
@@ -82,7 +82,7 @@ This application implements a machine learning pipeline to detect periodic dimmi
 - Limited files per target (1-3) for KIC ID variety
 - Reproducible with seed-based randomization
 
-## 📊 Results Example
+## Results Example
 
 ```
 Targets Processed:    10
@@ -126,7 +126,7 @@ python -m flask run
 python batch_analyze.py --targets 50 --kernel-size 10 --prominence 0.05
 ```
 
-## ☁️ Deployment
+## Deployment
 
 ### Deploy to Render (Free Tier)
 
@@ -164,7 +164,7 @@ python batch_analyze.py --targets 50 --kernel-size 10 --prominence 0.05
 └── README.md              # This file
 ```
 
-## 🔍 Algorithm Details
+## Algorithm Details
 
 ### Period Stability Assessment
 Stable periods indicate genuine exoplanet signals rather than noise:
@@ -182,7 +182,7 @@ Score = num_transits × weight_transits
 
 Weights are optimized to balance statistical significance with astrophysical realism.
 
-## 📚 Educational Value
+## Educational Value
 
 This project demonstrates:
 - **Scientific Computing**: Signal processing on real astronomical data
@@ -192,7 +192,7 @@ This project demonstrates:
 - **Cloud Deployment**: Production server configuration, environment management
 - **Version Control**: Git workflow, GitHub integration, CI/CD
 
-## 🎓 Relevant Concepts
+## Relevant Concepts
 
 - **Signal Processing**: Median filtering, peak detection, time-series analysis
 - **Statistics**: Coefficient of variation, mean/median/max calculations
@@ -200,25 +200,16 @@ This project demonstrates:
 - **Web Development**: REST APIs, database modeling, form handling
 - **DevOps**: Docker containerization, environment variables, production debugging
 
-## 🔗 References
+## References
 
 - [NASA Kepler Mission](https://science.nasa.gov/mission/kepler/)
 - [Kepler Archive Data](https://archive.stsci.edu/kepler/data_search/)
 - [Transit Method Explanation](https://en.wikipedia.org/wiki/Transit_photometry)
 - [Exoplanet Detection Techniques](https://www.nasa.gov/exoplanets/what-are-exoplanets-and-how-do-we-find-them)
 
-## 📝 License
+## License
 
 This project is provided as-is for educational purposes.
-
-## ✨ Future Enhancements
-
-- Machine learning model for false positive elimination
-- Integration with follow-up ground-based observations
-- Comparison with known exoplanet catalog (Kepler Objects of Interest)
-- Visualization of light curves with overlay of detected transits
-- Support for other missions (TESS, K2, etc.)
-- Advanced statistical hypothesis testing
 
 ---
 
