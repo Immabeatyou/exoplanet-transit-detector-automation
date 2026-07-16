@@ -4,5 +4,9 @@ services:
     env: python
     pythonVersion: 3.11
     buildCommand: pip install --only-binary :all: -r requirements.txt
-    startCommand: gunicorn web.app:app --bind 0.0.0.0:10000
+    startCommand: gunicorn -w 1 -b 0.0.0.0:10000 web.app:app
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.11"
+
 
