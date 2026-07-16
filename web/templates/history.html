@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+
+{% block title %}Run History{% endblock %}
+
+{% block content %}
+<h1>Run History</h1>
+<p>Previous pipeline executions and their results.</p>
+
+<table class="results-table" id="historyTable">
+    <thead>
+        <tr>
+            <th>Run ID</th>
+            <th>Timestamp (UTC)</th>
+            <th>Status</th>
+            <th>Processed</th>
+            <th>Succeeded</th>
+            <th>Success Rate</th>
+            <th>View</th>
+        </tr>
+    </thead>
+    <tbody id="historyBody">
+        <tr><td colspan="7">Loading history...</td></tr>
+    </tbody>
+</table>
+
+<div class="pagination" id="pagination"></div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+async function loadHistory(page = 1) {
+    const resp = await fetch(`/api/history?page=${page}&per_page=10`);
+    const data = await resp.json();
+    
+    const tbody = document.getElementById('historyBody');
+    
+    if (data.history.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="7">No runs yet.</td></tr>';
+        return;
+    }
+    
+    tbody.innerHTML = data.history.map(r => `
+        <tr>
+            <td><code>${r.id.substring(0, 8)}...</code></td>
+            <td>${new Date(r.timestamp).toLocaleString()}</td>
+            <td><span class="status-badge status-${r.status}">${r.status}</span></td>
+            <td>${r.processed}</td>
+            <td>${r.succeeded}</td>
+            <td>${r.success_rate}%</td>
+            <td><a href="/results/${r.id}" class="btn btn-small">View</a></td>
+        </tr>
+    `).join('');
+    
+    const pag = document.getElementById('pagination');
+    pag.innerHTML = '';
+    for (let i = 1; i <= data.pages; i++) {
+        const btn = document.createElement('button');
+        btn.textContent = i;
+        btn.className = `page-btn ${i === page ? 'active' : ''}`;
+        btn.onclick = () => loadHistory(i);
+        pag.appendChild(btn);
+    }
+}
+
+loadHistory();
+</script>
+{% endblock %}

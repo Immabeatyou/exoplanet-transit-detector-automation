@@ -1,0 +1,156 @@
+{% extends "base.html" %}
+
+{% block title %}Results - Run {{ run_id[:8] }}{% endblock %}
+
+{% block content %}
+<div class="results-header">
+    <h1>Pipeline Results</h1>
+    <p class="run-meta">
+        Run ID: <code>{{ run_id }}</code> |
+        Status: <span class="status-badge status-{{ run.status }}">{{ run.status }}</span>
+    </p>
+</div>
+
+{% if run.status == 'completed' %}
+<!-- Summary Cards -->
+<div class="summary-cards">
+    <div class="card">
+        <div class="card-number">{{ run.processed_count }}</div>
+        <div class="card-label">Targets Processed</div>
+    </div>
+    <div class="card">
+        <div class="card-number">{{ run.succeeded_count }}</div>
+        <div class="card-label">Succeeded</div>
+    </div>
+    <div class="card card-highlight">
+        <div class="card-number">{{ run.total_candidate_dips }}</div>
+        <div class="card-label">Total Candidate Dips</div>
+    </div>
+    <div class="card">
+        <div class="card-number">
+            {% if run.processed_count > 0 %}
+                {{ "%.1f"|format(run.succeeded_count / run.processed_count * 100) }}%
+            {% else %}
+                0%
+            {% endif %}
+        </div>
+        <div class="card-label">Success Rate</div>
+    </div>
+</div>
+
+<!-- Filter Bar -->
+<div class="filter-bar">
+    <label>Filter by review status:</label>
+    <button class="filter-btn active" data-filter="">All</button>
+    <button class="filter-btn" data-filter="review_now">Review Now</button>
+    <button class="filter-btn" data-filter="review_with_caution">Review with Caution</button>
+    <button class="filter-btn" data-filter="low_priority">Low Priority</button>
+
+    <div class="download-links">
+        <a href="/api/results/{{ run_id }}/download" class="btn btn-secondary">
+            ⬇ Download Full CSV
+        </a>
+    </div>
+</div>
+
+<!-- Results Table -->
+<div class="table-wrapper">
+    <table class="results-table" id="resultsTable">
+        <thead>
+            <tr>
+                <th>Target</th>
+                <th>Score</th>
+                <th>Quality</th>
+                <th>Period (days)</th>
+                <th>Stability</th>
+                <th>Mean Depth</th>
+                <th>Review Status</th>
+            </tr>
+        </thead>
+        <tbody id="resultsBody">
+            <tr><td colspan="7">Loading results...</td></tr>
+        </tbody>
+    </table>
+</div>
+
+<!-- Pagination -->
+<div class="pagination" id="pagination"></div>
+
+{% elif run.status == 'running' %}
+<div class="status-running">
+    <div class="spinner"></div>
+    <p>Pipeline is running... This page will refresh automatically.</p>
+    <script>setTimeout(() => location.reload(), 3000);</script>
+</div>
+
+{% elif run.status == 'failed' %}
+<div class="alert alert-error">
+    <strong>Pipeline failed:</strong> {{ run.error_message }}
+</div>
+
+{% else %}
+<div class="status-pending">
+    <p>Pipeline is queued. This page will refresh automatically.</p>
+    <script>setTimeout(() => location.reload(), 2000);</script>
+</div>
+{% endif %}
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const runId = '{{ run_id }}';
+let currentPage = 1;
+let currentFilter = '';
+
+async function loadResults(page = 1, filter = '') {
+    const url = `/api/results/${runId}?page=${page}&per_page=20&review_status=${filter}`;
+    const resp = await fetch(url);
+    const data = await resp.json();
+    
+    const tbody = document.getElementById('resultsBody');
+    
+    if (data.results.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="7">No results match this filter.</td></tr>';
+        return;
+    }
+    
+    tbody.innerHTML = data.results.map(r => `
+        <tr class="row-${r.review_status}">
+            <td><code>${r.target}</code></td>
+            <td><span class="score-badge score-${Math.floor(r.score / 10) * 10}">${r.score}</span></td>
+            <td><span class="badge badge-${r.quality_flag}">${r.quality_flag.replace('_', ' ')}</span></td>
+            <td>${r.period !== null ? r.period + ' d' : '—'}</td>
+            <td><span class="badge badge-${r.stability}">${r.stability}</span></td>
+            <td>${r.mean_depth !== null ? r.mean_depth : '—'}</td>
+            <td><span class="badge badge-${r.review_status}">${r.review_status.replace(/_/g, ' ')}</span></td>
+        </tr>
+    `).join('');
+    
+    // Pagination
+    const pag = document.getElementById('pagination');
+    pag.innerHTML = '';
+    for (let i = 1; i <= data.pages; i++) {
+        const btn = document.createElement('button');
+        btn.textContent = i;
+        btn.className = `page-btn ${i === page ? 'active' : ''}`;
+        btn.onclick = () => loadResults(i, currentFilter);
+        pag.appendChild(btn);
+    }
+}
+
+// Filter buttons
+document.querySelectorAll('.filter-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+        document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        currentFilter = btn.dataset.filter;
+        currentPage = 1;
+        loadResults(1, currentFilter);
+    });
+});
+
+// Initial load
+loadResults();
+</script>
+{% endblock %}

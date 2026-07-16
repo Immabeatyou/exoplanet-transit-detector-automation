@@ -1,0 +1,233 @@
+{% extends "base.html" %}
+
+{% block title %}Exoplanet Transit Detector{% endblock %}
+
+{% block content %}
+<div class="hero">
+    <h1>Detect Exoplanet Transits</h1>
+    <p>Analyze Kepler light curve data to identify candidate exoplanets</p>
+</div>
+
+<div class="content-grid">
+    <!-- Left: Form -->
+    <div class="form-panel">
+        <h2>Pipeline Configuration</h2>
+        
+        <form id="pipelineForm">
+            <!-- Data Source -->
+            <fieldset>
+                <legend>Data Source</legend>
+                <div class="form-group">
+                    <label>
+                        <input type="radio" name="source" value="archive" checked>
+                        Fetch from Kepler Archive
+                    </label>
+                    <label>
+                        <input type="radio" name="source" value="upload">
+                        Upload FITS Files
+                    </label>
+                </div>
+                
+                <div id="archiveOptions" class="form-group">
+                    <label for="archiveCount">Number of targets to fetch:</label>
+                    <input type="number" id="archiveCount" name="archiveCount" value="10" min="1" max="100">
+                    <small>Will fetch random Kepler LLC FITS files from archive</small>
+                </div>
+                
+                <div id="uploadOptions" class="form-group" style="display: none;">
+                    <label for="fitFiles">Upload FITS files:</label>
+                    <input type="file" id="fitFiles" name="fitFiles" multiple accept=".fits,.fit" style="display: none;">
+                    <button type="button" onclick="document.getElementById('fitFiles').click()" class="btn btn-secondary">
+                        Choose Files
+                    </button>
+                    <div id="fileList" style="margin-top: 10px;"></div>
+                </div>
+            </fieldset>
+
+            <!-- Detection Parameters -->
+            <fieldset>
+                <legend>Detection Parameters</legend>
+                
+                <div class="form-group">
+                    <label for="kernelSize">Median Filter Kernel Size:</label>
+                    <input type="number" id="kernelSize" name="kernelSize" value="101" min="3" step="2">
+                    <small>Must be odd number, >= 3. Larger = more smoothing</small>
+                </div>
+
+                <div class="form-group">
+                    <label for="prominence">Peak Prominence Threshold:</label>
+                    <input type="number" id="prominence" name="prominence" value="0.0002" min="0.00001" step="0.0001">
+                    <small>Smaller = detect fainter dips. Range: 0.0001-0.001</small>
+                </div>
+
+                <div class="form-group">
+                    <label for="minPeaks">Minimum Peaks (high confidence):</label>
+                    <input type="number" id="minPeaks" name="minPeaks" value="20" min="1">
+                </div>
+
+                <div class="form-group">
+                    <label for="maxPeaks">Maximum Peaks (high confidence):</label>
+                    <input type="number" id="maxPeaks" name="maxPeaks" value="400" min="20">
+                </div>
+            </fieldset>
+
+            <!-- Review Thresholds -->
+            <fieldset>
+                <legend>Review Thresholds</legend>
+                
+                <div class="form-group">
+                    <label for="reviewThreshold">Review Threshold (0-100):</label>
+                    <input type="number" id="reviewThreshold" name="reviewThreshold" value="70" min="0" max="100">
+                    <small>Score must meet this for "review_with_caution"</small>
+                </div>
+
+                <div class="form-group">
+                    <label for="reviewNowThreshold">Review Now Threshold (0-100):</label>
+                    <input type="number" id="reviewNowThreshold" name="reviewNowThreshold" value="75" min="0" max="100">
+                    <small>Score must meet this for top-priority "review_now"</small>
+                </div>
+            </fieldset>
+
+            <button type="submit" class="btn btn-primary btn-large">
+                <span>▶ Run Pipeline</span>
+            </button>
+        </form>
+    </div>
+
+    <!-- Right: Info Panel -->
+    <div class="info-panel">
+        <h2>About This Tool</h2>
+        
+        <div class="info-section">
+            <h3>How It Works</h3>
+            <ol>
+                <li><strong>Load Light Curve:</strong> Read Kepler FITS data (TIME, PDCSAP_FLUX)</li>
+                <li><strong>Detrend:</strong> Apply median filter to remove stellar variations</li>
+                <li><strong>Detect Dips:</strong> Find peaks in inverted flux (transits)</li>
+                <li><strong>Estimate Period:</strong> Median spacing of transit times</li>
+                <li><strong>Assess Stability:</strong> Coefficient of variation of period</li>
+                <li><strong>Score Candidates:</strong> Multi-factor ranking (quality, period, stability)</li>
+                <li><strong>Triage Results:</strong> Categorize by scientific confidence</li>
+            </ol>
+        </div>
+
+        <div class="info-section">
+            <h3>Output Files</h3>
+            <ul>
+                <li><strong>transit_results.csv:</strong> All candidates ranked by score</li>
+                <li><strong>top_candidates.csv:</strong> "review_now" priority cases</li>
+                <li><strong>caution_candidates.csv:</strong> "review_with_caution" cases</li>
+            </ul>
+        </div>
+
+        <div class="info-section">
+            <h3>Scoring Rubric</h3>
+            <p><strong>Base (0-55 pts):</strong> Quality flag (high/medium/low confidence)</p>
+            <p><strong>Period (0-35 pts):</strong> +25 if detected, +10 if 0.5-50 days</p>
+            <p><strong>Stability (±8 pts):</strong> +8 stable, +3 moderate, -8 unstable</p>
+            <p><strong>Peak Count (±20 pts):</strong> Bonus/penalty based on peak range</p>
+        </div>
+
+        <div class="info-section">
+            <h3>Data Source</h3>
+            <p>Kepler mission long-cadence (LLC) light curves from:</p>
+            <p><code>https://archive.stsci.edu/pub/kepler/lightcurves/</code></p>
+            <p>Files are ~10-15 MB each (30min-1hr processing time for 10 targets)</p>
+        </div>
+    </div>
+</div>
+
+<!-- Job Status Modal -->
+<div id="statusModal" class="modal" style="display: none;">
+    <div class="modal-content">
+        <h2>Processing...</h2>
+        <div class="progress-bar">
+            <div class="progress-fill"></div>
+        </div>
+        <p id="statusMessage">Initializing pipeline...</p>
+        <p id="statusRunId"></p>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.getElementById('pipelineForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    
+    const formData = new FormData(document.getElementById('pipelineForm'));
+    const source = formData.get('source');
+    
+    const payload = {
+        kernel_size: parseInt(formData.get('kernelSize')),
+        prominence: parseFloat(formData.get('prominence')),
+        review_threshold: parseFloat(formData.get('reviewThreshold')),
+        review_now_threshold: parseFloat(formData.get('reviewNowThreshold')),
+        min_peaks: parseInt(formData.get('minPeaks')),
+        max_peaks: parseInt(formData.get('maxPeaks')),
+        source: source
+    };
+    
+    if (source === 'archive') {
+        payload.archive_count = parseInt(formData.get('archiveCount'));
+    } else {
+        payload.uploaded_files = Array.from(document.getElementById('fitFiles').files).map(f => f.name);
+    }
+    
+    try {
+        const response = await fetch('/api/run', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(payload)
+        });
+        
+        if (!response.ok) throw new Error(`API error: ${response.status}`);
+        
+        const data = await response.json();
+        const runId = data.run_id;
+        
+        // Show status modal and poll for completion
+        document.getElementById('statusModal').style.display = 'flex';
+        document.getElementById('statusRunId').textContent = `Run ID: ${runId}`;
+        
+        // Poll every 2 seconds
+        const pollInterval = setInterval(async () => {
+            const statusResp = await fetch(`/api/run/${runId}`);
+            const status = await statusResp.json();
+            document.getElementById('statusMessage').textContent = `Status: ${status.status} | Processed: ${status.processed} | Succeeded: ${status.succeeded}`;
+            
+            if (status.status === 'completed' || status.status === 'failed') {
+                clearInterval(pollInterval);
+                setTimeout(() => {
+                    window.location.href = `/results/${runId}`;
+                }, 2000);
+            }
+        }, 2000);
+        
+    } catch (error) {
+        alert(`Error: ${error.message}`);
+    }
+});
+
+// Toggle upload/archive options
+document.querySelectorAll('input[name="source"]').forEach(input => {
+    input.addEventListener('change', (e) => {
+        document.getElementById('archiveOptions').style.display = e.target.value === 'archive' ? 'block' : 'none';
+        document.getElementById('uploadOptions').style.display = e.target.value === 'upload' ? 'block' : 'none';
+    });
+});
+
+// File upload handler
+document.getElementById('fitFiles').addEventListener('change', (e) => {
+    const fileList = document.getElementById('fileList');
+    fileList.innerHTML = '';
+    Array.from(e.target.files).forEach(file => {
+        const div = document.createElement('div');
+        div.className = 'file-item';
+        div.textContent = `✓ ${file.name} (${(file.size / 1024 / 1024).toFixed(1)} MB)`;
+        fileList.appendChild(div);
+    });
+});
+</script>
+{% endblock %}

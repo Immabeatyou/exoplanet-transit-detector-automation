@@ -1,0 +1,1 @@
+target,first_transit_time,mean_detrended_flux,std_detrended_flux,kernel_size,prominence,data_dir,num_peaks,quality_flag,estimated_period_days,final_ranking_score,period_stability_cv,period_stability_flag,review_status,review_reason
