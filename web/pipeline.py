@@ -291,9 +291,9 @@ def run_pipeline(
 
             if period_stability_cv is None:
                 period_stability_flag = "unknown"
-            elif period_stability_cv <= 0.10:
+            elif period_stability_cv <= 0.20:
                 period_stability_flag = "stable"
-            elif period_stability_cv <= 0.25:
+            elif period_stability_cv <= 0.50:
                 period_stability_flag = "moderate"
             else:
                 period_stability_flag = "unstable"
