@@ -1,6 +1,5 @@
 import os
 import numpy as np
-import matplotlib.pyplot as plt
 from astropy.io import fits
 import pandas as pd
 from scipy.signal import medfilt, find_peaks
@@ -120,6 +119,7 @@ def run_detrending(time, flux, kernel_size=101, prominence=0.0002, show_plot=Tru
     peaks, props = find_peaks(inv_flux, prominence=prominence)
     transit_times = time_clean[peaks]
     if show_plot:
+        import matplotlib.pyplot as plt
         plt.figure(figsize=(10, 4))
         plt.scatter(time_clean, flux_detrended, s=1)
         plt.xlabel("Time (days)")
