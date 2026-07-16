@@ -1,7 +1,5 @@
 from flask import Flask, render_template, request, jsonify, send_file, url_for
 from flask_sqlalchemy import SQLAlchemy
-from config import config
-from models import db, PipelineRun, TransitCandidate
 from datetime import datetime, timezone
 import os
 import sys
@@ -10,8 +8,9 @@ import pandas as pd
 import uuid
 from pathlib import Path
 
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-from pipeline import run_pipeline, fetch_kepler_llc_from_archive
+from web.config import config
+from web.models import db, PipelineRun, TransitCandidate
+from web.pipeline import run_pipeline, fetch_kepler_llc_from_archive
 
 def create_app(config_name='development'):
     """Application factory."""
