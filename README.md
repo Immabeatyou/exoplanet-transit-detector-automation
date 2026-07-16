@@ -96,7 +96,7 @@ Avg Stability:        38% Moderate+ (stable or moderate period)
 | kplr00435612... | 52 | Moderate | 0.061 | 0.0004 | 52 |
 | kplr00432662... | 48 | Stable | 0.089 | 0.0005 | 48 |
 
-## 🛠️ Local Development
+## Local Development
 
 ### Prerequisites
 - Python 3.9+
@@ -146,7 +146,7 @@ python batch_analyze.py --targets 50 --kernel-size 10 --prominence 0.05
    - Monitor logs until startup succeeds
    - Access at provided URL (e.g., `https://exoplanet-transit-detector.onrender.com`)
 
-## 📁 Project Structure
+## Project Structure
 
 ```
 .
@@ -210,7 +210,3 @@ This project demonstrates:
 ## License
 
 This project is provided as-is for educational purposes.
-
----
-
-**Questions?** Contact via GitHub issues or explore the live demo to see the pipeline in action!
