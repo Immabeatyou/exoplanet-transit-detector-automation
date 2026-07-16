@@ -560,7 +560,7 @@ def download_file(url, out_path, timeout=60):
 def fetch_kepler_llc_from_archive(
     target_count, 
     download_dir=DOWNLOAD_DIR, 
-    max_buckets=20, 
+    max_buckets=500, 
     randomize=True, 
     random_seed=None,
     exclude_filenames=None,
@@ -600,8 +600,9 @@ def fetch_kepler_llc_from_archive(
 
     bucket_dirs = list_bucket_dirs()
     if randomize:
+        step = max(1, len(bucket_dirs) // max_buckets)
+        bucket_dirs = bucket_dirs[::step][:max_buckets]
         rng.shuffle(bucket_dirs)
-        bucket_dirs = bucket_dirs[:max_buckets]
 
     for bucket in bucket_dirs:
         if len(rows) >= target_count:
