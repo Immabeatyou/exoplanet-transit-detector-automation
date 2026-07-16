@@ -6,12 +6,10 @@ DATA_DIR = os.path.join(BASE_DIR, 'data')
 
 class Config:
     os.makedirs(DATA_DIR, exist_ok=True)
-    # Use DATABASE_URL if set (for remote databases), otherwise use local SQLite
-    # For Render/production, falls back to /tmp which always exists
-    SQLALCHEMY_DATABASE_URI = os.environ.get(
-        'DATABASE_URL',
-        'sqlite:////tmp/transit_app.db'  # Portable path that works on Render and macOS
-    )
+    # Use DATABASE_URL if set and not empty (for remote databases)
+    # Otherwise use local SQLite in /tmp
+    db_url = os.environ.get('DATABASE_URL', '').strip()
+    SQLALCHEMY_DATABASE_URI = db_url if db_url else f'sqlite:///{os.path.join("/tmp", "transit_app.db")}'
     SQLALCHEMY_TRACK_MODIFICATIONS = False
 
     UPLOAD_FOLDER = os.path.join(DATA_DIR, 'uploads')
