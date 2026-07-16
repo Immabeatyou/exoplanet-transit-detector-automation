@@ -1,0 +1,35 @@
+# Virtual environment
+.venv/
+
+# Database and data files
+data/
+
+# Downloaded FITS files
+kepler_llc_downloads/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# Environment variables
+.env
+
+# Jupyter checkpoints
+.ipynb_checkpoints/
+
+# macOS
+.DS_Store
+
+# CSV outputs (generated at runtime)
+run_history.csv
+transit_results.csv
+top_candidates.csv
+caution_candidates.csv
+seen_targets.csv
+caution_candidates.csv
+one_target.csv
+review_now.csv
+tuned_results.csv
