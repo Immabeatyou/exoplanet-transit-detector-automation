@@ -625,6 +625,8 @@ def fetch_kepler_llc_from_archive(
                 llc_urls = list_llc_files(tdir)
                 if randomize:
                     rng.shuffle(llc_urls)
+                    files_per_target = rng.randint(1, 3)
+                    llc_urls = llc_urls[:files_per_target]
             except Exception as e:
                 print("Skipping target dir:", tdir, "|", e)
                 continue
