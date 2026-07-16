@@ -3,5 +3,6 @@ services:
     name: exoplanet-transit-detector
     env: python
     pythonVersion: 3.11
-    buildCommand: pip install -r requirements.txt
+    buildCommand: pip install --only-binary :all: -r requirements.txt
     startCommand: gunicorn web.app:app --bind 0.0.0.0:10000
+
