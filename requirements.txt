@@ -1,11 +1,12 @@
 Flask==2.3.3
 Flask-SQLAlchemy==3.0.5
 Werkzeug==2.3.7
-numpy==1.24.4
-pandas==2.0.3
-scipy==1.11.4
+numpy==2.0.0
+pandas==2.1.4
+scipy==1.13.0
 astropy==5.3.4
 requests==2.31.0
 python-dotenv==1.0.1
 gunicorn==21.2.0
+
 
