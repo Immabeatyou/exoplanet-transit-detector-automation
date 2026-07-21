@@ -363,27 +363,21 @@ def run_pipeline(
             elif period_stability_flag == "moderate":
                 final_ranking_score = min(100.0, final_ranking_score + 3.0)
             elif period_stability_flag == "unstable":
-                final_ranking_score = max(0.0, final_ranking_score - 8.0)
+                final_ranking_score = max(0.0, final_ranking_score - 20.0)
 
             if (
-                final_ranking_score >= review_now_threshold 
-                and period_stability_flag == "stable" 
-                and quality_flag == "high_confidence"
+                final_ranking_score >= 90
+                and period_stability_flag in ["stable", "moderate"]
+                and quality_flag in ["high_confidence", "medium_confidence"]
             ):
                 review_status = "review_now"
-                review_reason = "high score + stable period + high confidence"
-            elif (
-                final_ranking_score >= review_threshold 
-                and period_stability_flag in ["stable", "moderate"]
-            ):
+                review_reason = "very high score with acceptable stability/confidence"
+            elif final_ranking_score >= 75:
                 review_status = "review_with_caution"
-                review_reason = "high score but not strongest stability/confidence combination"
-            elif (
-                final_ranking_score >= review_threshold 
-                and (period_stability_flag == "unstable" or estimated_period_days is None)
-            ):
+                review_reason = "strong score but needs additional validation"
+            elif final_ranking_score >= review_threshold:
                 review_status = "review_with_caution"
-                review_reason = "high score but unstable or missing period estimate"
+                review_reason = "above threshold with weaker supporting signals"
             else:
                 review_status = "low_priority"
                 review_reason = "below review threshold or weak supporting signals"
