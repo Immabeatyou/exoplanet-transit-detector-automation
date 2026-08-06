@@ -1,8 +1,10 @@
 import os
+from astropy.timeseries import BoxLeastSquares
 import numpy as np
+import matplotlib.pyplot as plt
 from astropy.io import fits
 import pandas as pd
-from scipy.signal import medfilt, find_peaks
+from scipy.signal import medfilt, find_peaks, peak_widths
 import argparse
 from datetime import datetime, timezone
 import requests
@@ -115,6 +117,39 @@ def run_detrending(time, flux, kernel_size=101, prominence=0.0002, show_plot=Tru
     smooth = medfilt(flux64, kernel_size=kernel_size)
     smooth[smooth == 0] = np.nan
     flux_detrended = flux64 / smooth
+    finite = np.isfinite(time_clean) & np.isfinite(flux_detrended)
+    bls_time = time_clean[finite]
+    bls_flux = flux_detrended[finite]
+
+    if len(bls_time) >= 100:
+        bls = BoxLeastSquares(bls_time, bls_flux)
+        periods = np.linspace(0.5, 50.0, 2000)
+        durations = np.linspace(0.04, 0.3, 10)
+
+        bls_result = bls.power(periods, durations)
+        best_index = int(np.argmax(bls_result.power))
+
+        bls_period_days = float(bls_result.period[best_index])
+        bls_duration_days = float(bls_result.duration[best_index])
+        bls_depth = float(bls_result.depth[best_index])
+        bls_power = float(bls_result.power[best_index])
+    else:
+        bls_period_days = None
+        bls_duration_days = None
+        bls_depth = None
+        bls_power = None
+
+    total_samples = len(time)
+    valid_samples = int(np.sum(np.isfinite(time) & np.isfinite(flux)))
+    valid_fraction = valid_samples / total_samples if total_samples > 0 else 0.0
+
+    finite_times = time[np.isfinite(time)]
+    observation_baseline_days = (
+        float(np.max(finite_times) - np.min(finite_times))
+        if len(finite_times) >= 2
+        else None
+    )
+
     inv_flux = 1.0 - flux_detrended
     peaks, props = find_peaks(inv_flux, prominence=prominence)
     transit_times = time_clean[peaks]
@@ -264,6 +299,16 @@ def run_pipeline(
                 data = hdul[1].data
                 time = data["TIME"]
                 flux = data["PDCSAP_FLUX"]
+
+            total_samples = len(time)
+            valid_samples = int(np.sum(np.isfinite(time) & np.isfinite(flux)))
+            valid_fraction = valid_samples / total_samples if total_samples else 0.0
+            finite_times = time[np.isfinite(time)]
+            observation_baseline_days = (
+                float(np.max(finite_times) - np.min(finite_times))
+                if len(finite_times) >= 2
+                else None
+            )
                 
             result = run_detrending(
                 time=time, 
@@ -299,6 +344,27 @@ def run_pipeline(
                 period_stability_flag = "unstable"
                 
             flux_detrended = result["flux_detrended"]
+            bls_period_days = None
+            bls_duration_days = None
+            bls_depth = None
+            bls_power = None
+            flux_noise = float(np.nanstd(flux_detrended - 1.0))
+            transit_snr = None
+            depth_consistency_cv = None
+
+            finite = np.isfinite(result["time_clean"]) & np.isfinite(flux_detrended)
+            bls_time = result["time_clean"][finite]
+            bls_flux = flux_detrended[finite]
+            if len(bls_time) >= 100:
+                bls = BoxLeastSquares(bls_time, bls_flux)
+                periods = np.linspace(0.5, 50.0, 2000)
+                durations = np.linspace(0.04, 0.3, 10)
+                bls_result = bls.power(periods, durations)
+                best_index = int(np.argmax(bls_result.power))
+                bls_period_days = float(bls_result.period[best_index])
+                bls_duration_days = float(bls_result.duration[best_index])
+                bls_depth = float(bls_result.depth[best_index])
+                bls_power = float(bls_result.power[best_index])
 
             if len(peaks) > 0:
                 dip_depths = 1.0 - flux_detrended[peaks]
@@ -306,10 +372,48 @@ def run_pipeline(
                 mean_transit_depth = float(np.mean(dip_depths)) if len(dip_depths) > 0 else None
                 median_transit_depth = float(np.median(dip_depths)) if len(dip_depths) > 0 else None
                 max_transit_depth = float(np.max(dip_depths)) if len(dip_depths) > 0 else None
+                transit_snr = (
+                    float(median_transit_depth / flux_noise * np.sqrt(len(peaks)))
+                    if median_transit_depth is not None and flux_noise > 0 
+                    else None
+                )
+                
+                depth_consistency_cv = (
+                    float(np.std(dip_depths) / np.mean(dip_depths))
+                    if len(dip_depths) >= 2 and np.mean(dip_depths) > 0
+                    else None
+                )
+                                
             else:
                 mean_transit_depth = None
                 median_transit_depth = None
                 max_transit_depth = None
+
+            peak_width_values = peak_widths(
+                1.0 - flux_detrended,
+                peaks,
+                rel_height=0.5,
+            )[0] if len(peaks) > 0 else []
+            median_transit_duration = (
+                float(np.median(peak_width_values))
+                if len(peak_width_values) > 0
+                else None
+            )
+
+            if transit_snr is None:
+                snr_flag = "unknown"
+            elif transit_snr >= 10:
+                snr_flag = "strong"
+            elif transit_snr >= 5:
+                snr_flag = "moderate"
+            else:
+                snr_flag = "weak"
+
+            period_agreement = None
+            if estimated_period_days and bls_period_days:
+                period_agreement = abs(
+                    estimated_period_days - bls_period_days
+                ) / estimated_period_days
             
             if num_peaks == 0 or num_peaks > max_peaks * 5:
                 quality_flag = "low_confidence"
@@ -401,10 +505,22 @@ def run_pipeline(
                 "mean_transit_depth": mean_transit_depth,
                 "median_transit_depth": median_transit_depth,
                 "max_transit_depth": max_transit_depth,
+                "median_transit_duration": median_transit_duration,
+                "snr_flag": snr_flag,
+                "period_agreement": period_agreement,
                 "run_id": run_id,
                 "fetched_at_utc": run_timestamp,
                 "source_url": downloads_df[downloads_df["filename"] == target]["source_url"].values[0] if not downloads_df.empty and target in downloads_df["filename"].values else None,
                 "local_path": downloads_df[downloads_df["filename"] == target]["local_path"].values[0] if not downloads_df.empty and target in downloads_df["filename"].values else None,
+                "bls_period_days": bls_period_days,
+                "bls_duration_days": bls_duration_days,
+                "bls_depth": bls_depth,
+                "bls_power": bls_power,
+                "flux_noise": flux_noise,
+                "transit_snr": transit_snr,
+                "depth_consistency_cv": depth_consistency_cv,
+                "valid_fraction": valid_fraction,
+                "observation_baseline_days": observation_baseline_days,
             })
         except Exception as e:
             failures.append({
@@ -413,6 +529,53 @@ def run_pipeline(
             })
             continue
     results_df = pd.DataFrame(rows)
+
+    model_path = os.environ.get("XGBOOST_MODEL_PATH", "transit_xgb_model.json")
+
+    if not results_df.empty and os.path.exists(model_path):
+        from xgboost import XGBClassifier
+
+        feature_columns = [
+            "num_peaks",
+            "estimated_period_days",
+            "period_stability_cv",
+            "mean_transit_depth",
+            "median_transit_depth",
+            "max_transit_depth",
+            "bls_period_days",
+            "bls_duration_days",
+            "bls_depth",
+            "bls_power",
+            "mean_detrended_flux",
+            "std_detrended_flux",
+            "kernel_size",
+            "prominence",
+            "transit_snr",
+            "depth_consistency_cv",
+            "valid_fraction",
+            "observation_baseline_days",
+            "period_agreement",
+        ]
+
+        model = XGBClassifier()
+        model.load_model(model_path)
+
+        results_df["ml_probability"] = model.predict_proba(
+            results_df[feature_columns]
+        )[:, 1]
+    else:
+        results_df["ml_probability"] = np.nan
+
+    results_df["ml_model_status"] = "active" if os.path.exists(model_path) else "unavailable"
+    results_df["ml_review_status"] = "model_unavailable"
+
+    valid_ml = results_df["ml_probability"].notna()
+    results_df.loc[valid_ml, "ml_review_status"] = pd.cut(
+        results_df.loc[valid_ml, "ml_probability"],
+        bins=[-0.01, 0.40, 0.75, 1.0],
+        labels=["low_priority", "review_with_caution", "review_now"],
+    ).astype(str)
+
     if not results_df.empty and "final_ranking_score" in results_df.columns:
         results_df = results_df.sort_values("final_ranking_score", ascending=False).reset_index(drop=True)
     summary = {
@@ -631,7 +794,7 @@ def fetch_kepler_llc_from_archive(
                     break
 
                 fname = os.path.basename(file_url)
-                if fname in seen:
+                if fname in seen or fname in exclude_filenames:
                     continue
                 seen.add(fname)
 

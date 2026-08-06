@@ -219,7 +219,6 @@ def _run_pipeline_job(
             
             print(f"[{run_id}] Running pipeline on {len(targets)} targets...")
             
-            # Run pipeline
             results_df, failures, summary = run_pipeline(
                 targets=targets,
                 data_dir=app.config['UPLOAD_FOLDER'],
