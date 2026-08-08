@@ -1,7 +1,6 @@
 import os
 from astropy.timeseries import BoxLeastSquares
 import numpy as np
-import matplotlib.pyplot as plt
 from astropy.io import fits
 import pandas as pd
 from scipy.signal import medfilt, find_peaks, peak_widths
@@ -532,41 +531,55 @@ def run_pipeline(
 
     model_path = os.environ.get("XGBOOST_MODEL_PATH", "transit_xgb_model.json")
 
+    results_df["ml_probability"] = np.nan
+    ml_model_status = "unavailable"
+
     if not results_df.empty and os.path.exists(model_path):
-        from xgboost import XGBClassifier
+        try:
+            from xgboost import XGBClassifier
 
-        feature_columns = [
-            "num_peaks",
-            "estimated_period_days",
-            "period_stability_cv",
-            "mean_transit_depth",
-            "median_transit_depth",
-            "max_transit_depth",
-            "bls_period_days",
-            "bls_duration_days",
-            "bls_depth",
-            "bls_power",
-            "mean_detrended_flux",
-            "std_detrended_flux",
-            "kernel_size",
-            "prominence",
-            "transit_snr",
-            "depth_consistency_cv",
-            "valid_fraction",
-            "observation_baseline_days",
-            "period_agreement",
-        ]
+            feature_columns = [
+                "num_peaks",
+                "estimated_period_days",
+                "period_stability_cv",
+                "mean_transit_depth",
+                "median_transit_depth",
+                "max_transit_depth",
+                "bls_period_days",
+                "bls_duration_days",
+                "bls_depth",
+                "bls_power",
+                "mean_detrended_flux",
+                "std_detrended_flux",
+                "kernel_size",
+                "prominence",
+                "transit_snr",
+                "depth_consistency_cv",
+                "valid_fraction",
+                "observation_baseline_days",
+                "period_agreement",
+            ]
 
-        model = XGBClassifier()
-        model.load_model(model_path)
+            model = XGBClassifier()
+            model.load_model(model_path)
+            model_features = model.get_booster().feature_names or feature_columns
+            missing_model_features = [
+                column for column in model_features
+                if column not in results_df.columns
+            ]
+            if missing_model_features:
+                raise ValueError(
+                    f"Model features missing from results: {missing_model_features}"
+                )
 
-        results_df["ml_probability"] = model.predict_proba(
-            results_df[feature_columns]
-        )[:, 1]
-    else:
-        results_df["ml_probability"] = np.nan
+            results_df["ml_probability"] = model.predict_proba(
+                results_df[model_features]
+            )[:, 1]
+            ml_model_status = "active"
+        except Exception as exc:
+            print(f"ML scoring unavailable: {exc}")
 
-    results_df["ml_model_status"] = "active" if os.path.exists(model_path) else "unavailable"
+    results_df["ml_model_status"] = ml_model_status
     results_df["ml_review_status"] = "model_unavailable"
 
     valid_ml = results_df["ml_probability"].notna()
