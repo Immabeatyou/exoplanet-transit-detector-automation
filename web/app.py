@@ -204,15 +204,33 @@ def _run_pipeline_job(
             
             # Get targets
             if source == 'archive':
-                print(f"[{run_id}] Fetching {targets_or_count} targets from Kepler archive...")
-                downloads_df = fetch_kepler_llc_from_archive(
-                    target_count=targets_or_count,
-                    download_dir=app.config['UPLOAD_FOLDER'],
-                    max_buckets=20,
-                    randomize=True,
-                    random_seed=None
-                )
-                targets = downloads_df['filename'].tolist()
+                print(f"[{run_id}] Fetching {targets_or_count} targets from Kepler archive (max 5 min timeout)...")
+                try:
+                    downloads_df = fetch_kepler_llc_from_archive(
+                        target_count=targets_or_count,
+                        download_dir=app.config['UPLOAD_FOLDER'],
+                        max_buckets=5,  # Reduced from 20 to limit network requests
+                        randomize=True,
+                        random_seed=None
+                    )
+                    targets = downloads_df['filename'].tolist()
+                    print(f"[{run_id}] Downloaded {len(targets)} files from archive")
+                except Exception as archive_error:
+                    print(f"[{run_id}] Archive download failed or timed out: {archive_error}. Continuing with 0 targets.")
+                    targets = []
+                    downloads_df = pd.DataFrame()
+                
+                if not targets:
+                    print(f"[{run_id}] No targets downloaded from archive. Skipping pipeline run.")
+                    with app.app_context():
+                        run = PipelineRun.query.get(run_id)
+                        run.status = 'completed'
+                        run.processed_count = 0
+                        run.succeeded_count = 0
+                        run.failed_count = 0
+                        run.total_candidate_dips = 0
+                        db.session.commit()
+                    return
             else:
                 targets = targets_or_count
                 downloads_df = pd.DataFrame()

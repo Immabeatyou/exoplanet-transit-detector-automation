@@ -701,11 +701,19 @@ def save_seen_targets(filenames, path=SEEN_TARGETS_CSV):
 def clear_seen_targets(path=SEEN_TARGETS_CSV):
     if os.path.exists(path):
         os.remove(path)
-def fetch_links(url, timeout=30):
-    resp = requests.get(url, timeout=timeout)
-    resp.raise_for_status()
-    hrefs = re.findall(r'href="([^"]+)"', resp.text, flags=re.IGNORECASE)
-    return [urljoin(url, h) for h in hrefs if h not in ("../", "./")]
+def fetch_links(url, timeout=15):
+    """Fetch links from URL with aggressive timeout."""
+    try:
+        resp = requests.get(url, timeout=timeout)
+        resp.raise_for_status()
+        hrefs = re.findall(r'href="([^"]+)"', resp.text, flags=re.IGNORECASE)
+        return [urljoin(url, h) for h in hrefs if h not in ("../", "./")]
+    except requests.Timeout:
+        print(f"Timeout fetching {url} (>{timeout}s)")
+        return []
+    except Exception as e:
+        print(f"Error fetching {url}: {e}")
+        return []
 
 def list_bucket_dirs(base_url=BASE_URL):
     links = fetch_links(base_url)
@@ -719,13 +727,23 @@ def list_llc_files(target_dir_url):
     links = fetch_links(target_dir_url)
     return [u for u in links if u.lower().endswith("_llc.fits")]
 
-def download_file(url, out_path, timeout=60):
-    with requests.get(url, stream=True, timeout=timeout) as r:
-        r.raise_for_status()
-        with open(out_path, "wb") as f:
-            for chunk in r.iter_content(chunk_size=1024 * 1024):
-                if chunk:
-                    f.write(chunk)
+def download_file(url, out_path, timeout=30):
+    """Download file with aggressive timeout."""
+    try:
+        with requests.get(url, stream=True, timeout=timeout) as r:
+            r.raise_for_status()
+            with open(out_path, "wb") as f:
+                for chunk in r.iter_content(chunk_size=1024 * 1024):
+                    if chunk:
+                        f.write(chunk)
+    except requests.Timeout:
+        if os.path.exists(out_path):
+            os.remove(out_path)
+        raise TimeoutError(f"Download timeout (>{timeout}s): {url}")
+    except Exception as e:
+        if os.path.exists(out_path):
+            os.remove(out_path)
+        raise
 
 def fetch_kepler_llc_from_archive(
     target_count, 
