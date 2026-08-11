@@ -78,7 +78,7 @@ def fetch_labelled_lightcurves(n_per_class, download_dir, files_per_kic=1):
     return pd.DataFrame(rows)
 
 
-GENERATE_DATA = False
+GENERATE_DATA = True
 TARGETED_LABELS = True
 N_PER_CLASS = 75
 
