@@ -1,0 +1,303 @@
+import glob
+import pandas as pd
+from sklearn.metrics import classification_report, roc_auc_score
+from xgboost import XGBClassifier
+from sklearn.model_selection import GroupShuffleSplit, train_test_split, GroupKFold, KFold, cross_val_score, RandomizedSearchCV
+
+confirmed_kic_ids = set()
+
+GENERATE_DATA = False
+
+if GENERATE_DATA:
+    print("GENERATING TRAINING DATA FROM 100+ KEPLER TARGETS")
+    
+    from web.pipeline import run_pipeline, fetch_kepler_llc_from_archive
+    import os
+
+    DOWNLOAD_DIR = "kepler_llc_downloads/"
+    OUTPUT_CSV = "transit_results_100targets.csv"
+    TOP_CANDIDATES_CSV = "top_candidates_100targets.csv"
+    CAUTION_CANDIDATES_CSV = "caution_candidates_100targets.csv"
+    
+    os.makedirs(DOWNLOAD_DIR, exist_ok=True)
+    
+    print("\nDownloading 100 Kepler light curves from archive...")
+    print("(This may take 10-30 minutes depending on network speed)\n")
+    
+    downloads_df = fetch_kepler_llc_from_archive(
+        target_count=100,
+        download_dir=DOWNLOAD_DIR,
+        max_buckets=50,
+        randomize=True,
+        random_seed=42
+    )
+    
+    if len(downloads_df) == 0:
+        print("No files downloaded. Check network connection.")
+        GENERATE_DATA = False
+    else:
+        print(f"\nDownloaded {len(downloads_df)} light curves")
+        
+        targets = downloads_df['filename'].tolist()
+        
+        print(f"\nRunning pipeline on {len(targets)} targets...")
+        print("(This may take 20-60 minutes depending on CPU)\n")
+        
+        results_df, failures, summary = run_pipeline(
+            targets=targets,
+            data_dir=DOWNLOAD_DIR,
+            export_csv=True,
+            output_csv=OUTPUT_CSV,
+            show_plot=False,
+            kernel_size=101,
+            prominence=0.0002,
+            top_candidates_csv=TOP_CANDIDATES_CSV,
+            caution_candidates_csv=CAUTION_CANDIDATES_CSV,
+            review_threshold=70.0,
+            review_now_threshold=75.0,
+            min_peaks=20,
+            max_peaks=400,
+            downloads_df=downloads_df
+        )
+        
+        print(f"TRAINING DATA GENERATION COMPLETE")
+        print(f"Processed: {summary['processed']} targets")
+        print(f"Succeeded: {summary['succeeded']} targets")
+        print(f"Failed: {summary['failed']} targets")
+        print(f"Total candidate dips: {summary['total_candidate_dips']}")
+        print(f"\nOutput files:")
+        print(f"  - {OUTPUT_CSV} ({len(results_df)} rows)")
+        print(f"  - {TOP_CANDIDATES_CSV}")
+        print(f"  - {CAUTION_CANDIDATES_CSV}")
+        print(f"  - Downloads in: {DOWNLOAD_DIR}")
+        print(f"\nReady for training. Training will use this generated data.\n")
+   
+files = glob.glob("data/results/results_*.csv")
+files += glob.glob("transit_results.csv")
+files += glob.glob("transit_results_*targets.csv")
+files = list(dict.fromkeys(files)) 
+
+if not files:
+    raise FileNotFoundError("No results CSV files were found.")
+
+for path in files:
+    print(path, pd.read_csv(path).shape)
+
+largest_path = max(files, key=lambda path: pd.read_csv(path).shape[0])
+data = pd.read_csv(largest_path).copy()
+print("Using:", largest_path)
+print(data.head())
+
+if "review_status" not in data.columns:
+    raise ValueError("Missing review_status column for initial labeling.")
+
+if "kic_id" not in data.columns:
+    print("Extracting kic_id from target column...")
+    data["kic_id"] = data["target"].astype(str).str.extract(r"kplr(\d+)")[0]
+
+data["is_confirmed_planet"] = data["kic_id"].isin(
+    confirmed_kic_ids
+).astype(int)
+
+if data["is_confirmed_planet"].nunique() < 2:
+    if "final_ranking_score" not in data.columns:
+        raise ValueError(
+            "Only one label class from review_status and no final_ranking_score for fallback labeling."
+        )
+
+    data["final_ranking_score"] = pd.to_numeric(
+        data["final_ranking_score"], errors="coerce"
+    )
+    data = data.dropna(subset=["final_ranking_score"]).copy()
+
+    n = len(data)
+    if n < 2:
+        raise ValueError("Need at least 2 rows to create two classes.")
+
+    k = max(1, int(round(0.30 * n)))
+    top_idx = data["final_ranking_score"].sort_values(ascending=False).index[:k]
+
+    data["is_confirmed_planet"] = 0
+    data.loc[top_idx, "is_confirmed_planet"] = 1
+
+    print(f"Applied forced fallback labeling: positives={k}, negatives={n-k}")
+    
+print("Label counts:")
+print(data["is_confirmed_planet"].value_counts(dropna=False))
+
+print("\nAvailable Columns")
+print(data.columns.tolist())
+
+FEATURES = [
+    "num_peaks",
+    "estimated_period_days",
+    "period_stability_cv",
+    "mean_transit_depth",
+    "median_transit_depth",
+    "max_transit_depth",
+    "bls_period_days",
+    "bls_duration_days",
+    "bls_depth",
+    "bls_power",
+    "mean_detrended_flux",
+    "std_detrended_flux",
+    "kernel_size",
+    "prominence",
+    "transit_snr",
+    "depth_consistency_cv",
+    "valid_fraction",
+    "observation_baseline_days",
+    "period_agreement",
+]
+
+
+missing_columns = [col for col in FEATURES if col not in data.columns]
+available_features = [col for col in FEATURES if col in data.columns]
+
+if missing_columns:
+    print(f"\nMissing columns (will fill with default -1): {missing_columns}")
+    for col in missing_columns:
+        data[col] = -1.0
+
+print(f"Using {len(available_features)} available features out of {len(FEATURES)} total")
+
+if len(available_features) < 5:
+    raise ValueError(f"Too few available features: {available_features}. Need at least 5.")
+
+X = data[FEATURES].apply(pd.to_numeric, errors="coerce").fillna(-1)
+y = data["is_confirmed_planet"]
+
+if "target" not in data.columns:
+    raise ValueError("Missing target column for group split.")
+
+groups = data["target"].astype(str).str.extract(r"kplr(\d+)")[0]
+groups = groups.fillna(data["target"].astype(str))
+
+if groups.nunique() < 2:
+    print("Only one KIC group found. Falling back to per-target grouping.")
+    groups = data["target"].astype(str)
+
+split_found = False
+for seed in range(42, 142):
+    splitter = GroupShuffleSplit(
+        n_splits=1,
+        test_size=0.2,
+        random_state=seed,
+    )
+    train_indices, test_indices = next(splitter.split(X, y, groups))
+
+    y_train = y.iloc[train_indices]
+    y_test = y.iloc[test_indices]
+
+    if y_train.nunique() == 2 and y_test.nunique() == 2:
+        split_found = True
+        print("Using group split seed:", seed)
+        break
+
+if not split_found:
+    print("Could not find valid group split. Falling back to stratified split.")
+    train_indices, test_indices = train_test_split(
+        data.index,
+        test_size=0.2,
+        random_state=42,
+        stratify=y
+    )
+    
+model = XGBClassifier(
+    n_estimators=300,
+    max_depth=4,
+    learning_rate=0.05,
+    subsample=0.8,
+    colsample_bytree=0.8,
+    objective="binary:logistic",
+    eval_metric="aucpr",
+    tree_method="hist",
+    n_jobs=1,
+    random_state=42,
+)
+
+model.fit(
+    X.iloc[train_indices],
+    y.iloc[train_indices],
+)
+
+probabilities = model.predict_proba(
+    X.iloc[test_indices]
+)[:, 1]
+
+predictions = probabilities >= 0.5
+
+print(classification_report(
+    y.iloc[test_indices],
+    predictions,
+    zero_division=0,
+))
+
+n_unique_groups = groups.nunique()
+print(f"\nNumber of unique groups: {n_unique_groups}")
+
+if n_unique_groups >= 5:
+    cv = GroupKFold(n_splits=5)
+    print("Using GroupKFold with n_splits=5")
+elif n_unique_groups >= 3:
+    n_splits = n_unique_groups
+    cv = GroupKFold(n_splits=n_splits)
+    print(f"Using GroupKFold with n_splits={n_splits} (limited by group count)")
+else:
+    from sklearn.model_selection import KFold
+    cv = KFold(n_splits=min(5, len(X) // 3), random_state=42, shuffle=True)
+    print(f"Using KFold with n_splits={cv.n_splits} (too few groups for GroupKFold)")
+
+parameters = {
+    "n_estimators": [100, 200, 300, 500],
+    "max_depth": [2, 3, 4, 5],
+    "learning_rate": [0.01, 0.03, 0.05, 0.1],
+    "subsample": [0.7, 0.8, 1.0],
+    "colsample_bytree": [0.7, 0.8, 1.0],
+}
+
+search = RandomizedSearchCV(
+    model,
+    parameters,
+    n_iter=20,
+    scoring="roc_auc",
+    cv=cv,
+    random_state=42,
+    n_jobs=1,
+)
+
+if isinstance(cv, GroupKFold):
+    search.fit(X, y, groups=groups)
+else:
+    search.fit(X, y)
+
+model = search.best_estimator_
+print("Best parameters:", search.best_params_)
+
+print("\nCross-Validation Results")
+if isinstance(cv, GroupKFold):
+    scores = cross_val_score(
+        model,
+        X,
+        y,
+        groups=groups,
+        cv=cv,
+        scoring="roc_auc",
+    )
+else:
+    scores = cross_val_score(
+        model,
+        X,
+        y,
+        cv=cv,
+        scoring="roc_auc",
+    )
+
+print("Fold ROC-AUC:", scores)
+print("Mean ROC-AUC:", scores.mean())
+print("Std ROC-AUC:", scores.std())
+print("Test set ROC-AUC:", roc_auc_score(y.iloc[test_indices], probabilities))
+
+model.save_model("transit_xgb_model.json")
+
+print("\nModel saved successfully to transit_xgb_model.json")
