@@ -1,36 +1,113 @@
 import glob
+import os
 import pandas as pd
+import requests
 from sklearn.metrics import classification_report, roc_auc_score
 from xgboost import XGBClassifier
 from sklearn.model_selection import GroupShuffleSplit, train_test_split, GroupKFold, KFold, cross_val_score, RandomizedSearchCV
 
-confirmed_kic_ids = set()
+KOI_LABELS_CSV = "koi_labels.csv"
+KOI_TAP_URL = (
+    "https://exoplanetarchive.ipac.caltech.edu/TAP/sync"
+    "?query=select+kepid,koi_disposition+from+cumulative&format=csv"
+)
+
+
+def load_confirmed_kic_ids():
+    """Real CONFIRMED-planet KIC IDs from the NASA Exoplanet Archive KOI table."""
+    if not os.path.exists(KOI_LABELS_CSV):
+        print("Fetching KOI dispositions from NASA Exoplanet Archive...")
+        try:
+            response = requests.get(KOI_TAP_URL, timeout=120)
+            response.raise_for_status()
+            with open(KOI_LABELS_CSV, "w") as handle:
+                handle.write(response.text)
+        except Exception as exc:
+            print(f"Could not fetch KOI labels ({exc}). Falling back to score-based labeling.")
+            return set()
+
+    koi = pd.read_csv(KOI_LABELS_CSV)
+    confirmed = koi.loc[koi["koi_disposition"] == "CONFIRMED", "kepid"]
+    return set(confirmed.astype(str).str.zfill(9))
+
+
+confirmed_kic_ids = load_confirmed_kic_ids()
+print(f"Loaded {len(confirmed_kic_ids)} confirmed-planet KIC IDs")
+
+
+def fetch_labelled_lightcurves(n_per_class, download_dir, files_per_kic=1):
+    """Download light curves for known CONFIRMED and FALSE POSITIVE KICs."""
+    import random
+    import re
+    from web.pipeline import BASE_URL, download_file, fetch_links
+
+    koi = pd.read_csv(KOI_LABELS_CSV)
+    koi["kic"] = koi["kepid"].astype(str).str.zfill(9)
+
+    rng = random.Random(42)
+    rows = []
+    for disposition in ("CONFIRMED", "FALSE POSITIVE"):
+        kics = sorted(set(koi.loc[koi["koi_disposition"] == disposition, "kic"]))
+        rng.shuffle(kics)
+
+        collected = 0
+        for kic in kics:
+            if collected >= n_per_class:
+                break
+            target_url = f"{BASE_URL}{kic[:4]}/{kic}/"
+            try:
+                urls = [u for u in fetch_links(target_url) if u.lower().endswith("_llc.fits")]
+            except Exception:
+                continue
+            if not urls:
+                continue
+
+            for file_url in urls[:files_per_kic]:
+                fname = os.path.basename(file_url)
+                local_path = os.path.join(download_dir, fname)
+                try:
+                    if not os.path.exists(local_path):
+                        download_file(file_url, local_path)
+                    rows.append({"filename": fname, "local_path": os.path.abspath(local_path),
+                                 "source_url": file_url, "disposition": disposition})
+                    collected += 1
+                    print(f"  [{disposition}] {collected}/{n_per_class}: {fname}")
+                except Exception as exc:
+                    print(f"  failed {fname}: {exc}")
+
+    return pd.DataFrame(rows)
+
 
 GENERATE_DATA = False
+TARGETED_LABELS = True
+N_PER_CLASS = 75
 
 if GENERATE_DATA:
-    print("GENERATING TRAINING DATA FROM 100+ KEPLER TARGETS")
-    
+    print("GENERATING TRAINING DATA FROM KEPLER ARCHIVE")
+
     from web.pipeline import run_pipeline, fetch_kepler_llc_from_archive
     import os
 
     DOWNLOAD_DIR = "kepler_llc_downloads/"
-    OUTPUT_CSV = "transit_results_100targets.csv"
+    OUTPUT_CSV = "transit_results_labelled_targets.csv" if TARGETED_LABELS else "transit_results_100targets.csv"
     TOP_CANDIDATES_CSV = "top_candidates_100targets.csv"
     CAUTION_CANDIDATES_CSV = "caution_candidates_100targets.csv"
-    
+
     os.makedirs(DOWNLOAD_DIR, exist_ok=True)
-    
-    print("\nDownloading 100 Kepler light curves from archive...")
-    print("(This may take 10-30 minutes depending on network speed)\n")
-    
-    downloads_df = fetch_kepler_llc_from_archive(
-        target_count=100,
-        download_dir=DOWNLOAD_DIR,
-        max_buckets=50,
-        randomize=True,
-        random_seed=42
-    )
+
+    if TARGETED_LABELS:
+        print(f"\nDownloading {N_PER_CLASS} confirmed + {N_PER_CLASS} false-positive light curves...\n")
+        downloads_df = fetch_labelled_lightcurves(N_PER_CLASS, DOWNLOAD_DIR)
+    else:
+        print("\nDownloading 100 random Kepler light curves from archive...")
+        print("(This may take 10-30 minutes depending on network speed)\n")
+        downloads_df = fetch_kepler_llc_from_archive(
+            target_count=100,
+            download_dir=DOWNLOAD_DIR,
+            max_buckets=50,
+            randomize=True,
+            random_seed=42
+        )
     
     if len(downloads_df) == 0:
         print("No files downloaded. Check network connection.")
@@ -76,17 +153,18 @@ files = glob.glob("data/results/results_*.csv")
 files += glob.glob("transit_results.csv")
 files += glob.glob("transit_results_*targets.csv")
 files = list(dict.fromkeys(files)) 
-
 if not files:
     raise FileNotFoundError("No results CSV files were found.")
 
+frames = []
 for path in files:
-    print(path, pd.read_csv(path).shape)
+    frame = pd.read_csv(path)
+    print(path, frame.shape)
+    frames.append(frame)
 
-largest_path = max(files, key=lambda path: pd.read_csv(path).shape[0])
-data = pd.read_csv(largest_path).copy()
-print("Using:", largest_path)
-print(data.head())
+data = pd.concat(frames, ignore_index=True, sort=False)
+data = data.drop_duplicates(subset="target", keep="last").reset_index(drop=True)
+print(f"Combined dataset: {data.shape[0]} unique targets from {len(files)} files")
 
 if "review_status" not in data.columns:
     raise ValueError("Missing review_status column for initial labeling.")
@@ -98,6 +176,7 @@ if "kic_id" not in data.columns:
 data["is_confirmed_planet"] = data["kic_id"].isin(
     confirmed_kic_ids
 ).astype(int)
+print(f"Real-label matches: {int(data['is_confirmed_planet'].sum())} confirmed of {len(data)} targets")
 
 if data["is_confirmed_planet"].nunique() < 2:
     if "final_ranking_score" not in data.columns:
