@@ -80,7 +80,7 @@ def fetch_labelled_lightcurves(n_per_class, download_dir, files_per_kic=1):
 
 GENERATE_DATA = True
 TARGETED_LABELS = True
-N_PER_CLASS = 75
+N_PER_CLASS = 200
 
 if GENERATE_DATA:
     print("GENERATING TRAINING DATA FROM KEPLER ARCHIVE")
@@ -99,7 +99,7 @@ if GENERATE_DATA:
         print(f"\nDownloading {N_PER_CLASS} confirmed + {N_PER_CLASS} false-positive light curves...\n")
         downloads_df = fetch_labelled_lightcurves(N_PER_CLASS, DOWNLOAD_DIR)
     else:
-        print("\nDownloading 100 random Kepler light curves from archive...")
+        print("\nDownloading random Kepler light curves from archive...")
         print("(This may take 10-30 minutes depending on network speed)\n")
         downloads_df = fetch_kepler_llc_from_archive(
             target_count=100,
