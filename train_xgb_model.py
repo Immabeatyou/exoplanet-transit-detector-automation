@@ -79,7 +79,7 @@ def fetch_labelled_lightcurves(n_per_class, download_dir, files_per_kic=1):
     return pd.DataFrame(rows)
 
 
-GENERATE_DATA = False
+GENERATE_DATA = True
 TARGETED_LABELS = True
 N_PER_CLASS = 200
 
@@ -322,6 +322,36 @@ print(classification_report(
     probabilities >= best_threshold,
     zero_division=0,
 ))
+
+uncertain_candidates = data.iloc[test_indices].copy()
+uncertain_candidates["ml_probability"] = probabilities
+
+uncertain_candidates = uncertain_candidates[
+    uncertain_candidates["ml_probability"].between(0.35, 0.55)
+].sort_values("ml_probability")
+
+uncertain_columns = [
+    "target",
+    "ml_probability",
+    "final_ranking_score",
+    "transit_snr",
+    "period_agreement",
+]
+
+available_uncertain_columns = [
+    column for column in uncertain_columns
+    if column in uncertain_candidates.columns
+]
+
+uncertain_candidates[available_uncertain_columns].to_csv(
+    "uncertain_candidates.csv",
+    index=False,
+)
+
+print(
+    f"Saved {len(uncertain_candidates)} uncertain candidates "
+    "to uncertain_candidates.csv"
+)
 
 n_unique_groups = groups.nunique()
 print(f"\nNumber of unique groups: {n_unique_groups}")
