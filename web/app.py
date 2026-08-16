@@ -236,7 +236,7 @@ def _run_pipeline_job(
                     downloads_df = fetch_kepler_llc_from_archive(
                         target_count=targets_or_count,
                         download_dir=app.config['UPLOAD_FOLDER'],
-                        max_buckets=5,  # Reduced from 20 to limit network requests
+                        max_buckets=max(20, targets_or_count * 2),
                         randomize=True,
                         random_seed=None
                     )

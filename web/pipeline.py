@@ -859,19 +859,20 @@ def fetch_kepler_llc_from_archive(
         exclude_filenames = set()
 
     os.makedirs(download_dir, exist_ok=True)
-    local_rows = _discover_local_llc_files(download_dir, max_results=target_count)
-    if local_rows:
-        filtered_local = []
-        seen = set()
-        for row in local_rows:
-            fname = row["filename"]
-            if fname in seen or fname in exclude_filenames:
-                continue
-            seen.add(fname)
-            filtered_local.append(row)
-            if len(filtered_local) >= target_count:
-                break
-        return pd.DataFrame(filtered_local)
+    if not randomize:
+        local_rows = _discover_local_llc_files(download_dir, max_results=target_count)
+        if local_rows:
+            filtered_local = []
+            seen = set()
+            for row in local_rows:
+                fname = row["filename"]
+                if fname in seen or fname in exclude_filenames:
+                    continue
+                seen.add(fname)
+                filtered_local.append(row)
+                if len(filtered_local) >= target_count:
+                    break
+            return pd.DataFrame(filtered_local)
 
     rows = []
     seen = set()
@@ -880,35 +881,35 @@ def fetch_kepler_llc_from_archive(
 
     try:
         bucket_dirs = list_bucket_dirs()
-        if randomize:
-            step = max(1, len(bucket_dirs) // max_buckets)
-            bucket_dirs = bucket_dirs[::step][:max_buckets]
-            rng.shuffle(bucket_dirs)
+        step = max(1, len(bucket_dirs) // max_buckets)
+        bucket_dirs = bucket_dirs[::step][:max_buckets]
+        rng.shuffle(bucket_dirs)
 
+        bucket_targets = []
         for bucket in bucket_dirs:
-            if len(rows) >= target_count:
-                break
-
             try:
                 target_dirs = list_target_dirs(bucket)
-                if randomize:
-                    rng.shuffle(target_dirs)
-                    targets_per_bucket = rng.randint(2, 8)
-                    target_dirs = target_dirs[:targets_per_bucket]
+                rng.shuffle(target_dirs)
+                bucket_targets.append(target_dirs)
             except Exception as e:
                 print("Skipping bucket:", bucket, "|", e)
-                continue
 
-            for tdir in target_dirs:
+        # Rotate through buckets so the first pass covers as much of MAST as possible.
+        for round_index in range(max((len(targets) for targets in bucket_targets), default=0)):
+            for target_dirs in bucket_targets:
                 if len(rows) >= target_count:
                     break
+                if round_index >= len(target_dirs):
+                    continue
+
+                tdir = target_dirs[round_index]
+                kic_name = os.path.basename(tdir.rstrip("/"))
+                if any(existing_kic == kic_name for existing_kic in seen):
+                    continue
 
                 try:
                     llc_urls = list_llc_files(tdir)
-                    if randomize:
-                        rng.shuffle(llc_urls)
-                        files_per_target = rng.randint(1, 3)
-                        llc_urls = llc_urls[:files_per_target]
+                    rng.shuffle(llc_urls)
                 except Exception as e:
                     print("Skipping target dir:", tdir, "|", e)
                     continue
@@ -920,6 +921,7 @@ def fetch_kepler_llc_from_archive(
                     fname = os.path.basename(file_url)
                     if fname in seen or fname in exclude_filenames:
                         continue
+                    seen.add(kic_name)
                     seen.add(fname)
 
                     local_path = os.path.abspath(os.path.join(download_dir, fname))
@@ -939,6 +941,7 @@ def fetch_kepler_llc_from_archive(
                         })
                     except Exception as e:
                         print("Failed file:", file_url, "|", e)
+                    break
     except Exception as exc:
         print(f"Kepler archive unreachable; falling back to local cache: {exc}")
 
