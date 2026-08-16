@@ -283,7 +283,16 @@ def run_pipeline(
         try:
             print(f"[{len(rows) + len(failures) + 1}/{len(targets)}] processing {target}")
             
-            file_path = os.path.join(data_dir, target)
+            matching_download = (
+                downloads_df[downloads_df["filename"] == target]
+                if not downloads_df.empty and "filename" in downloads_df.columns
+                else pd.DataFrame()
+            )
+            file_path = (
+                matching_download.iloc[0]["local_path"]
+                if not matching_download.empty and pd.notna(matching_download.iloc[0].get("local_path"))
+                else os.path.join(data_dir, target)
+            )
             
             is_valid, error_msg = validate_fits_file(file_path)
             if not is_valid:
