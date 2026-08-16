@@ -2,7 +2,7 @@ import glob
 import os
 import pandas as pd
 import requests
-from sklearn.metrics import classification_report, roc_auc_score
+from sklearn.metrics import classification_report, roc_auc_score, precision_recall_curve
 from xgboost import XGBClassifier
 from sklearn.model_selection import GroupShuffleSplit, train_test_split, GroupKFold, KFold, cross_val_score, RandomizedSearchCV
 
@@ -78,7 +78,7 @@ def fetch_labelled_lightcurves(n_per_class, download_dir, files_per_kic=1):
     return pd.DataFrame(rows)
 
 
-GENERATE_DATA = True
+GENERATE_DATA = False
 TARGETED_LABELS = True
 N_PER_CLASS = 200
 
@@ -304,11 +304,20 @@ probabilities = model.predict_proba(
     X.iloc[test_indices]
 )[:, 1]
 
-predictions = probabilities >= 0.5
+precision, recall, thresholds = precision_recall_curve(
+    y.iloc[test_indices],
+    probabilities
+)
+
+f1 = 2 * precision * recall / (precision + recall + 1e-9)
+best_idx = f1.argmax()
+best_threshold = thresholds[best_idx - 1] if best_idx > 0 else 0.5
+
+print("Best threshold:", best_threshold)
 
 print(classification_report(
     y.iloc[test_indices],
-    predictions,
+    probabilities >= best_threshold,
     zero_division=0,
 ))
 
@@ -371,6 +380,14 @@ else:
         cv=cv,
         scoring="roc_auc",
     )
+
+importance_df = pd.DataFrame({
+    "feature": FEATURES,
+    "importance": model.feature_importances_,   
+}).sort_values("importance", ascending=False)
+
+importance_df.to_csv("transit_xgb_feature_importance.csv", index=False)
+print(importance_df)
 
 print("Fold ROC-AUC:", scores)
 print("Mean ROC-AUC:", scores.mean())

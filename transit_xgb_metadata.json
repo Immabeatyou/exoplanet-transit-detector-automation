@@ -1,0 +1,10 @@
+{
+  "features": "FEATURES",
+  "best_params": "search.best_params_",
+  "mean_cv_roc_auc": "scores.mean()",
+  "std_cv_roc_auc": "scores.std()",
+  "test_roc_auc": "roc_auc_score(...)",
+  "label_counts": "...",
+  "training_rows": "len(data)",
+  "real_label_matches": "..."
+}
