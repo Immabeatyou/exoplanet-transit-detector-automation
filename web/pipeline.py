@@ -771,6 +771,49 @@ def download_file(url, out_path, timeout=30):
             os.remove(out_path)
         raise
 
+def _discover_local_llc_files(download_dir, max_results=None):
+    """Find any cached FITS files available locally when the archive is unreachable."""
+    search_dirs = []
+    for base_dir in [
+        download_dir,
+        os.path.abspath(os.path.join(os.getcwd(), "kepler_llc_downloads")),
+        os.path.abspath(os.path.join(os.getcwd(), "data")),
+        os.path.abspath(os.path.join(os.getcwd(), "uploads")),
+    ]:
+        if base_dir and os.path.isdir(base_dir) and base_dir not in search_dirs:
+            search_dirs.append(base_dir)
+
+    local_rows = []
+    seen_names = set()
+
+    for base_dir in search_dirs:
+        try:
+            for filename in sorted(os.listdir(base_dir)):
+                lower_name = filename.lower()
+                if not (lower_name.endswith(".fits") or lower_name.endswith(".fits.gz")):
+                    continue
+                if filename in seen_names:
+                    continue
+                seen_names.add(filename)
+
+                local_path = os.path.abspath(os.path.join(base_dir, filename))
+                if not os.path.isfile(local_path):
+                    continue
+                size_mb = os.path.getsize(local_path) / (1024 * 1024)
+                local_rows.append({
+                    "filename": filename,
+                    "local_path": local_path,
+                    "source_url": f"local://{local_path}",
+                    "size_mb": round(size_mb, 2),
+                })
+                if max_results is not None and len(local_rows) >= max_results:
+                    return local_rows
+        except OSError:
+            continue
+
+    return local_rows
+
+
 def fetch_kepler_llc_from_archive(
     target_count, 
     download_dir=DOWNLOAD_DIR, 
@@ -807,71 +850,103 @@ def fetch_kepler_llc_from_archive(
         exclude_filenames = set()
 
     os.makedirs(download_dir, exist_ok=True)
+    local_rows = _discover_local_llc_files(download_dir, max_results=target_count)
+    if local_rows:
+        filtered_local = []
+        seen = set()
+        for row in local_rows:
+            fname = row["filename"]
+            if fname in seen or fname in exclude_filenames:
+                continue
+            seen.add(fname)
+            filtered_local.append(row)
+            if len(filtered_local) >= target_count:
+                break
+        return pd.DataFrame(filtered_local)
+
     rows = []
     seen = set()
 
     rng = random.Random(random_seed)
 
-    bucket_dirs = list_bucket_dirs()
-    if randomize:
-        step = max(1, len(bucket_dirs) // max_buckets)
-        bucket_dirs = bucket_dirs[::step][:max_buckets]
-        rng.shuffle(bucket_dirs)
+    try:
+        bucket_dirs = list_bucket_dirs()
+        if randomize:
+            step = max(1, len(bucket_dirs) // max_buckets)
+            bucket_dirs = bucket_dirs[::step][:max_buckets]
+            rng.shuffle(bucket_dirs)
 
-    for bucket in bucket_dirs:
-        if len(rows) >= target_count:
-            break
-
-        try:
-            target_dirs = list_target_dirs(bucket)
-            if randomize:
-                rng.shuffle(target_dirs)
-                targets_per_bucket = rng.randint(2, 8)  # Vary targets pulled per bucket
-                target_dirs = target_dirs[:targets_per_bucket]
-        except Exception as e:
-            print("Skipping bucket:", bucket, "|", e)
-            continue
-
-        for tdir in target_dirs:
+        for bucket in bucket_dirs:
             if len(rows) >= target_count:
                 break
 
             try:
-                llc_urls = list_llc_files(tdir)
+                target_dirs = list_target_dirs(bucket)
                 if randomize:
-                    rng.shuffle(llc_urls)
-                    files_per_target = rng.randint(1, 3)
-                    llc_urls = llc_urls[:files_per_target]
+                    rng.shuffle(target_dirs)
+                    targets_per_bucket = rng.randint(2, 8)
+                    target_dirs = target_dirs[:targets_per_bucket]
             except Exception as e:
-                print("Skipping target dir:", tdir, "|", e)
+                print("Skipping bucket:", bucket, "|", e)
                 continue
 
-            for file_url in llc_urls:
+            for tdir in target_dirs:
                 if len(rows) >= target_count:
                     break
 
-                fname = os.path.basename(file_url)
-                if fname in seen or fname in exclude_filenames:
-                    continue
-                seen.add(fname)
-
-                local_path = os.path.abspath(os.path.join(download_dir, fname))
                 try:
-                    if not os.path.exists(local_path):
-                        download_file(file_url, local_path)
-                        print(f"Downloaded {len(rows)+1}/{target_count}: {fname}")
-                    else:
-                        print(f"Using existing {len(rows)+1}/{target_count}: {fname}")
-
-                    size_mb = os.path.getsize(local_path) / (1024 * 1024)
-                    rows.append({
-                        "filename": fname,
-                        "local_path": local_path,
-                        "source_url": file_url,
-                        "size_mb": round(size_mb, 2),
-                    })
+                    llc_urls = list_llc_files(tdir)
+                    if randomize:
+                        rng.shuffle(llc_urls)
+                        files_per_target = rng.randint(1, 3)
+                        llc_urls = llc_urls[:files_per_target]
                 except Exception as e:
-                    print("Failed file:", file_url, "|", e)
+                    print("Skipping target dir:", tdir, "|", e)
+                    continue
+
+                for file_url in llc_urls:
+                    if len(rows) >= target_count:
+                        break
+
+                    fname = os.path.basename(file_url)
+                    if fname in seen or fname in exclude_filenames:
+                        continue
+                    seen.add(fname)
+
+                    local_path = os.path.abspath(os.path.join(download_dir, fname))
+                    try:
+                        if not os.path.exists(local_path):
+                            download_file(file_url, local_path)
+                            print(f"Downloaded {len(rows)+1}/{target_count}: {fname}")
+                        else:
+                            print(f"Using existing {len(rows)+1}/{target_count}: {fname}")
+
+                        size_mb = os.path.getsize(local_path) / (1024 * 1024)
+                        rows.append({
+                            "filename": fname,
+                            "local_path": local_path,
+                            "source_url": file_url,
+                            "size_mb": round(size_mb, 2),
+                        })
+                    except Exception as e:
+                        print("Failed file:", file_url, "|", e)
+    except Exception as exc:
+        print(f"Kepler archive unreachable; falling back to local cache: {exc}")
+
+    if len(rows) < target_count:
+        local_rows = _discover_local_llc_files(download_dir, max_results=target_count)
+        if local_rows:
+            print(
+                f"Using {len(local_rows)} cached local FITS file(s) because the Kepler archive is unavailable."
+            )
+        for row in local_rows:
+            fname = row["filename"]
+            if fname in seen or fname in exclude_filenames:
+                continue
+            seen.add(fname)
+            rows.append(row)
+            if len(rows) >= target_count:
+                break
 
     return pd.DataFrame(rows)
 def main(argv=None):

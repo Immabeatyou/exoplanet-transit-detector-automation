@@ -249,8 +249,8 @@ def _run_pipeline_job(
                 
                 if not targets:
                     message = (
-                        "No Kepler light curves were downloaded. "
-                        "The archive may have timed out or returned no files."
+                        "Kepler archive is currently unavailable and no local FITS cache was found. "
+                        "Please upload a light curve file or restore cached Kepler files before retrying."
                     )
                     print(f"[{run_id}] {message}")
                     with app.app_context():
