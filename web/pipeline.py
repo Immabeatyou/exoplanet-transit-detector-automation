@@ -12,6 +12,7 @@ from urllib.parse import urljoin
 import random
 import uuid
 import json
+import time
 """
 Exoplanet Transit Detection Research Pipeline
 ---------------------------------------------------------------------------------------------------------
@@ -720,23 +721,29 @@ def save_seen_targets(filenames, path=SEEN_TARGETS_CSV):
 def clear_seen_targets(path=SEEN_TARGETS_CSV):
     if os.path.exists(path):
         os.remove(path)
-def fetch_links(url, timeout=15):
-    """Fetch links from URL with aggressive timeout."""
-    try:
-        resp = requests.get(url, timeout=timeout)
-        resp.raise_for_status()
-        hrefs = re.findall(r'href="([^"]+)"', resp.text, flags=re.IGNORECASE)
-        return [urljoin(url, h) for h in hrefs if h not in ("../", "./")]
-    except requests.Timeout:
-        print(f"Timeout fetching {url} (>{timeout}s)")
-        return []
-    except Exception as e:
-        print(f"Error fetching {url}: {e}")
-        return []
+def fetch_links(url, timeout=30, retries=3):
+    """Fetch archive links with retries so one slow response does not look empty."""
+    last_error = None
+    for attempt in range(1, retries + 1):
+        try:
+            resp = requests.get(url, timeout=(10, timeout))
+            resp.raise_for_status()
+            hrefs = re.findall(r'href="([^"]+)"', resp.text, flags=re.IGNORECASE)
+            return [urljoin(url, h) for h in hrefs if h not in ("../", "./")]
+        except requests.RequestException as exc:
+            last_error = exc
+            print(f"Archive request {attempt}/{retries} failed for {url}: {exc}")
+            if attempt < retries:
+                time.sleep(1)
+
+    raise RuntimeError(f"Could not fetch archive index after {retries} attempts: {last_error}")
 
 def list_bucket_dirs(base_url=BASE_URL):
     links = fetch_links(base_url)
-    return [u for u in links if re.search(r"/\d{4}/$", u)]
+    buckets = [u for u in links if re.search(r"/\d{4}/$", u)]
+    if not buckets:
+        raise RuntimeError(f"No Kepler archive buckets found at {base_url}")
+    return buckets
 
 def list_target_dirs(bucket_url):
     links = fetch_links(bucket_url)

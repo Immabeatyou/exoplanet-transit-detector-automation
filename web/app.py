@@ -248,14 +248,19 @@ def _run_pipeline_job(
                     downloads_df = pd.DataFrame()
                 
                 if not targets:
-                    print(f"[{run_id}] No targets downloaded from archive. Skipping pipeline run.")
+                    message = (
+                        "No Kepler light curves were downloaded. "
+                        "The archive may have timed out or returned no files."
+                    )
+                    print(f"[{run_id}] {message}")
                     with app.app_context():
                         run = PipelineRun.query.get(run_id)
-                        run.status = 'completed'
+                        run.status = 'failed'
                         run.processed_count = 0
                         run.succeeded_count = 0
                         run.failed_count = 0
                         run.total_candidate_dips = 0
+                        run.error_message = message
                         db.session.commit()
                     return
             else:
