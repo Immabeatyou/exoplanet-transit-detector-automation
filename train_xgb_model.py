@@ -14,8 +14,8 @@ KOI_TAP_URL = (
 )
 
 
-def load_confirmed_kic_ids():
-    """Real CONFIRMED-planet KIC IDs from the NASA Exoplanet Archive KOI table."""
+def load_koi_labels():
+    """Return KIC IDs with verified CONFIRMED or FALSE POSITIVE dispositions."""
     if not os.path.exists(KOI_LABELS_CSV):
         print("Fetching KOI dispositions from NASA Exoplanet Archive...")
         try:
@@ -25,15 +25,24 @@ def load_confirmed_kic_ids():
                 handle.write(response.text)
         except Exception as exc:
             print(f"Could not fetch KOI labels ({exc}). Falling back to score-based labeling.")
-            return set()
+            return {}
 
     koi = pd.read_csv(KOI_LABELS_CSV)
-    confirmed = koi.loc[koi["koi_disposition"] == "CONFIRMED", "kepid"]
-    return set(confirmed.astype(str).str.zfill(9))
+    koi = koi[koi["koi_disposition"].isin(["CONFIRMED", "FALSE POSITIVE"])].copy()
+    koi["kic_id"] = koi["kepid"].astype(str).str.zfill(9)
+    return dict(zip(koi["kic_id"], koi["koi_disposition"]))
 
 
-confirmed_kic_ids = load_confirmed_kic_ids()
-print(f"Loaded {len(confirmed_kic_ids)} confirmed-planet KIC IDs")
+koi_labels = load_koi_labels()
+confirmed_kic_ids = {
+    kic_id for kic_id, disposition in koi_labels.items()
+    if disposition == "CONFIRMED"
+}
+false_positive_kic_ids = {
+    kic_id for kic_id, disposition in koi_labels.items()
+    if disposition == "FALSE POSITIVE"
+}
+print(f"Loaded {len(confirmed_kic_ids)} confirmed and {len(false_positive_kic_ids)} false-positive KIC IDs")
 
 
 def fetch_labelled_lightcurves(n_per_class, download_dir, files_per_kic=1):
@@ -79,7 +88,11 @@ def fetch_labelled_lightcurves(n_per_class, download_dir, files_per_kic=1):
     return pd.DataFrame(rows)
 
 
-GENERATE_DATA = True
+if __name__ != "__main__":
+    raise RuntimeError("Run train_xgb_model.py as a script; importing it is disabled.")
+
+
+GENERATE_DATA = False
 TARGETED_LABELS = True
 N_PER_CLASS = 200
 
@@ -174,33 +187,23 @@ if "kic_id" not in data.columns:
     print("Extracting kic_id from target column...")
     data["kic_id"] = data["target"].astype(str).str.extract(r"kplr(\d+)")[0]
 
-data["is_confirmed_planet"] = data["kic_id"].isin(
-    confirmed_kic_ids
+data["koi_disposition"] = data["kic_id"].map(koi_labels)
+data = data[data["koi_disposition"].notna()].copy()
+data["is_confirmed_planet"] = (
+    data["koi_disposition"] == "CONFIRMED"
 ).astype(int)
-print(f"Real-label matches: {int(data['is_confirmed_planet'].sum())} confirmed of {len(data)} targets")
 
 if data["is_confirmed_planet"].nunique() < 2:
-    if "final_ranking_score" not in data.columns:
-        raise ValueError(
-            "Only one label class from review_status and no final_ranking_score for fallback labeling."
-        )
-
-    data["final_ranking_score"] = pd.to_numeric(
-        data["final_ranking_score"], errors="coerce"
+    raise ValueError(
+        "Need both CONFIRMED and FALSE POSITIVE NASA labels; "
+        "unknown targets are excluded from supervised training."
     )
-    data = data.dropna(subset=["final_ranking_score"]).copy()
 
-    n = len(data)
-    if n < 2:
-        raise ValueError("Need at least 2 rows to create two classes.")
-
-    k = max(1, int(round(0.30 * n)))
-    top_idx = data["final_ranking_score"].sort_values(ascending=False).index[:k]
-
-    data["is_confirmed_planet"] = 0
-    data.loc[top_idx, "is_confirmed_planet"] = 1
-
-    print(f"Applied forced fallback labeling: positives={k}, negatives={n-k}")
+print(
+    f"Using {len(data)} verified KOI targets: "
+    f"{int(data['is_confirmed_planet'].sum())} confirmed, "
+    f"{int((data['is_confirmed_planet'] == 0).sum())} false positive"
+)
     
 print("Label counts:")
 print(data["is_confirmed_planet"].value_counts(dropna=False))
