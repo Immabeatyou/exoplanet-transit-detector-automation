@@ -91,9 +91,9 @@ def fetch_labelled_lightcurves(n_per_class, download_dir, files_per_kic=1):
 if __name__ != "__main__":
     raise RuntimeError("Run train_xgb_model.py as a script; importing it is disabled.")
 
-GENERATE_DATA = False
+GENERATE_DATA = True
 TARGETED_LABELS = True
-N_PER_CLASS = 300
+N_PER_CLASS = 500
 
 if GENERATE_DATA:
     print("GENERATING TRAINING DATA FROM KEPLER ARCHIVE")

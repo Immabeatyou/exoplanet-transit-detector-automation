@@ -23,18 +23,18 @@
   "best_params": {
     "subsample": 0.7,
     "n_estimators": 300,
-    "max_depth": 3,
+    "max_depth": 5,
     "learning_rate": 0.01,
-    "colsample_bytree": 1.0
+    "colsample_bytree": 0.8
   },
   "best_threshold": 0.41,
-  "mean_cv_roc_auc": 0.7026273921237202,
-  "std_cv_roc_auc": 0.041118331116148904,
-  "test_roc_auc": 0.7124435847840103,
+  "mean_cv_roc_auc": 0.7362814566930727,
+  "std_cv_roc_auc": 0.027400836805568436,
+  "test_roc_auc": 0.739090909090909,
   "label_counts": {
-    "0": 206,
-    "1": 193
+    "0": 507,
+    "1": 492
   },
-  "training_rows": 399,
-  "real_label_matches": 193
+  "training_rows": 999,
+  "real_label_matches": 492
 }
