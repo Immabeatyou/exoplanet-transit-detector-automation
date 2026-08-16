@@ -65,10 +65,13 @@
                 <th>Stability</th>
                 <th>Mean Depth</th>
                 <th>Review Status</th>
+                <th>ML Probability</th>
+                <th>ML Status</th>
+                <th>ML Review</th>
             </tr>
         </thead>
         <tbody id="resultsBody">
-            <tr><td colspan="7">Loading results...</td></tr>
+            <tr><td colspan="10">Loading results...</td></tr>
         </tbody>
     </table>
 </div>
@@ -111,7 +114,7 @@ async function loadResults(page = 1, filter = '') {
     const tbody = document.getElementById('resultsBody');
     
     if (data.results.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="7">No results match this filter.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="10">No results match this filter.</td></tr>';
         return;
     }
     
@@ -124,6 +127,21 @@ async function loadResults(page = 1, filter = '') {
             <td><span class="badge badge-${r.stability}">${r.stability}</span></td>
             <td>${r.mean_depth !== null ? r.mean_depth : '—'}</td>
             <td><span class="badge badge-${r.review_status}">${r.review_status.replace(/_/g, ' ')}</span></td>
+            <td>
+                ${r.ml_probability !== null
+                    ? (r.ml_probability * 100).toFixed(1) + '%'
+                    : '—'}
+            </td>
+            <td>
+                <span class="badge badge-${r.ml_model_status}">
+                    ${r.ml_model_status.replace(/_/g, ' ')}
+                </span>
+            </td>
+            <td>
+                <span class="badge badge-${r.ml_review_status}">
+                    ${r.ml_review_status.replace(/_/g, ' ')}
+                </span>
+            </td>
         </tr>
     `).join('');
     

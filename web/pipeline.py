@@ -11,6 +11,7 @@ import re
 from urllib.parse import urljoin
 import random
 import uuid
+import json
 """
 Exoplanet Transit Detection Research Pipeline
 ---------------------------------------------------------------------------------------------------------
@@ -530,6 +531,22 @@ def run_pipeline(
     results_df = pd.DataFrame(rows)
 
     model_path = os.environ.get("XGBOOST_MODEL_PATH", "transit_xgb_model.json")
+    metadata_path = os.environ.get(
+        "XGBOOST_METADATA_PATH",
+        "transit_xgb_metadata.json",
+    )
+
+    model_threshold = 0.75
+
+    if os.path.exists(metadata_path):
+        with open(metadata_path, encoding="utf-8") as metadata_file:
+            metadata = json.load(metadata_file)
+
+        model_threshold = float(
+            metadata.get("best_threshold", model_threshold)
+        )
+
+    model_threshold = min(max(model_threshold, 0.41), 0.99)
 
     results_df["ml_probability"] = np.nan
     ml_model_status = "unavailable"
@@ -585,7 +602,7 @@ def run_pipeline(
     valid_ml = results_df["ml_probability"].notna()
     results_df.loc[valid_ml, "ml_review_status"] = pd.cut(
         results_df.loc[valid_ml, "ml_probability"],
-        bins=[-0.01, 0.40, 0.75, 1.0],
+        bins=[-0.01, 0.40, model_threshold, 1.0],
         labels=["low_priority", "review_with_caution", "review_now"],
     ).astype(str)
 
@@ -605,8 +622,8 @@ def run_pipeline(
         else:
             print(f"Exported {len(results_df)} rows to {output_csv}")
     
-    review_now_df = results_df.loc[results_df['review_status'] == "review_now"].copy()
-    review_caution_df = results_df.loc[results_df['review_status'] == "review_with_caution"].copy()
+    review_now_df = results_df.loc[results_df['ml_review_status'] == "review_now"].copy()
+    review_caution_df = results_df.loc[results_df['ml_review_status'] == "review_with_caution"].copy()
     
     if "final_ranking_score" in review_now_df.columns:
         review_now_df = review_now_df.sort_values("final_ranking_score", ascending=False).reset_index(drop=True)

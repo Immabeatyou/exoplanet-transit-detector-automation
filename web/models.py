@@ -62,5 +62,9 @@ class TransitCandidate(db.Model):
     mean_detrended_flux = db.Column(db.Float)
     std_detrended_flux = db.Column(db.Float)
 
+    ml_probability = db.Column(db.Float)
+    ml_model_status = db.Column(db.String(30))
+    ml_review_status = db.Column(db.String(30))
+
     def __repr__(self):
         return f"<TransitCandidate {self.target_name} (score={self.final_ranking_score:.1f})>"

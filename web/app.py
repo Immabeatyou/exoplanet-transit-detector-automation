@@ -135,6 +135,9 @@ def api_get_results(run_id):
         'stability': r.period_stability_flag,
         'review_status': r.review_status,
         'mean_depth': round(r.mean_transit_depth, 4) if r.mean_transit_depth else None,
+        'ml_probability': round(r.ml_probability, 4) if r.ml_probability is not None else None,
+        'ml_model_status': r.ml_model_status or "unavailable",
+        'ml_review_status': r.ml_review_status or "model_unavailable",
     } for r in paginated.items]
     
     return jsonify({
@@ -254,7 +257,6 @@ def _run_pipeline_job(
                 downloads_df=downloads_df
             )
             
-            # Update database
             run.status = 'completed'
             run.processed_count = summary['processed']
             run.succeeded_count = summary['succeeded']
@@ -264,7 +266,6 @@ def _run_pipeline_job(
             run.top_candidates_csv_path = os.path.join(app.config['RESULTS_FOLDER'], f'top_{run_id}.csv')
             run.caution_candidates_csv_path = os.path.join(app.config['RESULTS_FOLDER'], f'caution_{run_id}.csv')
             
-            # Store individual results
             for _, row in results_df.iterrows():
                 candidate = TransitCandidate(
                     run_id=run_id,
@@ -285,6 +286,9 @@ def _run_pipeline_job(
                     local_path=row.get('local_path'),
                     mean_detrended_flux=float(row['mean_detrended_flux']) if pd.notna(row['mean_detrended_flux']) else None,
                     std_detrended_flux=float(row['std_detrended_flux']) if pd.notna(row['std_detrended_flux']) else None,
+                    ml_probability=float(row["ml_probability"]) if pd.notna(row.get("ml_probability")) else None,
+                    ml_model_status=row.get("ml_model_status", "unavailable"),
+                    ml_review_status=row.get("ml_review_status", "model_unavailable"),
                 )
                 db.session.add(candidate)
             
