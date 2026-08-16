@@ -1,4 +1,5 @@
 import glob
+import json
 import os
 import pandas as pd
 import requests
@@ -312,6 +313,7 @@ precision, recall, thresholds = precision_recall_curve(
 f1 = 2 * precision * recall / (precision + recall + 1e-9)
 best_idx = f1.argmax()
 best_threshold = thresholds[best_idx - 1] if best_idx > 0 else 0.5
+best_threshold = min(max(float(best_threshold), 0.41), 0.99)
 
 print("Best threshold:", best_threshold)
 
@@ -392,8 +394,24 @@ print(importance_df)
 print("Fold ROC-AUC:", scores)
 print("Mean ROC-AUC:", scores.mean())
 print("Std ROC-AUC:", scores.std())
-print("Test set ROC-AUC:", roc_auc_score(y.iloc[test_indices], probabilities))
+test_roc_auc = roc_auc_score(y.iloc[test_indices], probabilities)
+print("Test set ROC-AUC:", test_roc_auc)
 
 model.save_model("transit_xgb_model.json")
 
+metadata = {
+    "features": FEATURES,
+    "best_params": search.best_params_,
+    "best_threshold": float(best_threshold),
+    "mean_cv_roc_auc": float(scores.mean()),
+    "std_cv_roc_auc": float(scores.std()),
+    "test_roc_auc": float(test_roc_auc),
+    "label_counts": {str(key): int(value) for key, value in y.value_counts().items()},
+    "training_rows": int(len(data)),
+    "real_label_matches": int(data["is_confirmed_planet"].sum()),
+}
+with open("transit_xgb_metadata.json", "w", encoding="utf-8") as metadata_file:
+    json.dump(metadata, metadata_file, indent=2)
+
 print("\nModel saved successfully to transit_xgb_model.json")
+print("Metadata saved successfully to transit_xgb_metadata.json")

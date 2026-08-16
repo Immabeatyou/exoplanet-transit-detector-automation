@@ -7,10 +7,33 @@ import threading
 import pandas as pd
 import uuid
 from pathlib import Path
+from sqlalchemy import inspect, text
 
 from web.config import config
 from web.models import db, PipelineRun, TransitCandidate
 from web.pipeline import run_pipeline, fetch_kepler_llc_from_archive
+
+
+def ensure_ml_columns():
+    """Add ML columns to existing databases without replacing stored runs."""
+    existing_columns = {
+        column["name"]
+        for column in inspect(db.engine).get_columns("transit_candidates")
+    }
+    new_columns = {
+        "ml_probability": "FLOAT",
+        "ml_model_status": "VARCHAR(30)",
+        "ml_review_status": "VARCHAR(30)",
+    }
+    for column_name, column_type in new_columns.items():
+        if column_name not in existing_columns:
+            db.session.execute(
+                text(
+                    f"ALTER TABLE transit_candidates "
+                    f"ADD COLUMN {column_name} {column_type}"
+                )
+            )
+    db.session.commit()
 
 def create_app(config_name='development'):
     """Application factory."""
@@ -21,6 +44,7 @@ def create_app(config_name='development'):
     
     with app.app_context():
         db.create_all()
+        ensure_ml_columns()
     
     return app
 

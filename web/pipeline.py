@@ -539,12 +539,14 @@ def run_pipeline(
     model_threshold = 0.75
 
     if os.path.exists(metadata_path):
-        with open(metadata_path, encoding="utf-8") as metadata_file:
-            metadata = json.load(metadata_file)
-
-        model_threshold = float(
-            metadata.get("best_threshold", model_threshold)
-        )
+        try:
+            with open(metadata_path, encoding="utf-8") as metadata_file:
+                metadata = json.load(metadata_file)
+            model_threshold = float(
+                metadata.get("best_threshold", model_threshold)
+            )
+        except (OSError, TypeError, ValueError, json.JSONDecodeError) as exc:
+            print(f"ML metadata unavailable; using threshold {model_threshold}: {exc}")
 
     model_threshold = min(max(model_threshold, 0.41), 0.99)
 

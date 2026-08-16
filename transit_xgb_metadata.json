@@ -1,10 +1,40 @@
 {
-  "features": "FEATURES",
-  "best_params": "search.best_params_",
-  "mean_cv_roc_auc": "scores.mean()",
-  "std_cv_roc_auc": "scores.std()",
-  "test_roc_auc": "roc_auc_score(...)",
-  "label_counts": "...",
-  "training_rows": "len(data)",
-  "real_label_matches": "..."
+  "features": [
+    "num_peaks",
+    "estimated_period_days",
+    "period_stability_cv",
+    "mean_transit_depth",
+    "median_transit_depth",
+    "max_transit_depth",
+    "bls_period_days",
+    "bls_duration_days",
+    "bls_depth",
+    "bls_power",
+    "mean_detrended_flux",
+    "std_detrended_flux",
+    "kernel_size",
+    "prominence",
+    "transit_snr",
+    "depth_consistency_cv",
+    "valid_fraction",
+    "observation_baseline_days",
+    "period_agreement"
+  ],
+  "best_params": {
+    "subsample": 0.8,
+    "n_estimators": 200,
+    "max_depth": 3,
+    "learning_rate": 0.01,
+    "colsample_bytree": 1.0
+  },
+  "best_threshold": 0.41,
+  "mean_cv_roc_auc": 0.7912618574061394,
+  "std_cv_roc_auc": 0.024187585488622022,
+  "test_roc_auc": 0.7598522167487685,
+  "label_counts": {
+    "0": 310,
+    "1": 202
+  },
+  "training_rows": 512,
+  "real_label_matches": 202
 }
