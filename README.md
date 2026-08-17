@@ -40,15 +40,18 @@ This application implements a machine learning pipeline to detect periodic dimmi
 ## Technology Stack
 
 ### Backend
-- **Flask 2.3.3** - Python web framework
-- **SQLAlchemy 2.0.51** - ORM for database management
-- **Gunicorn 26.0** - Production WSGI server
+- **Flask 2.3.2** - Python web framework
+- **Flask-SQLAlchemy 3.0.5** - ORM integration
+- **Gunicorn 21.2.0** - Production WSGI server
 
 ### Data Science
-- **NumPy 2.4.6** - Numerical computing
-- **Pandas 3.0.3** - Data manipulation and analysis
-- **SciPy 1.17.1** - Scientific algorithms (signal processing, statistics)
-- **Astropy 8.0.1** - FITS file handling and astronomical utilities
+- **NumPy 1.24.3** - Numerical computing
+- **Pandas 2.0.3** - Data manipulation and analysis
+- **SciPy 1.11.1** - Scientific algorithms (signal processing, statistics)
+- **Astropy 5.3.4** - FITS file handling and astronomical utilities
+- **Matplotlib 3.9.4** - Light-curve plotting
+- **XGBoost 2.1.0** - Candidate classification
+- **scikit-learn 1.5.0** - Model training and evaluation
 
 ### Frontend
 - **Jinja2** - Template rendering
@@ -99,8 +102,9 @@ Avg Stability:        38% Moderate+ (stable or moderate period)
 ## Local Development
 
 ### Prerequisites
-- Python 3.9+
+- Python 3.11
 - pip or conda
+- macOS: OpenMP (`brew install libomp` or `conda install -c conda-forge llvm-openmp`)
 
 ### Setup
 
@@ -114,7 +118,7 @@ python -m venv .venv
 source .venv/bin/activate  # On Windows: .venv\Scripts\activate
 
 # Install dependencies
-pip install -r requirements.txt
+python -m pip install -r requirements-dev.txt
 
 # Run development server
 python -m flask run
@@ -123,7 +127,12 @@ python -m flask run
 
 ### Running Batch Analysis
 ```bash
-python batch_analyze.py --targets 50 --kernel-size 10 --prominence 0.05
+python web/pipeline.py --kernel-size 101 --prominence 0.0002
+```
+
+### Running Tests
+```bash
+python -m pytest -q
 ```
 
 ## Deployment
@@ -157,9 +166,10 @@ python batch_analyze.py --targets 50 --kernel-size 10 --prominence 0.05
 │   ├── pipeline.py         # Core detection algorithm
 │   ├── templates/          # HTML templates
 │   └── static/             # CSS & JavaScript
-├── batch_analyze.py        # Command-line batch processing
-├── transit_analyzer.py     # Analysis utilities
+├── tests/                   # Pytest suite
+├── train_xgb_model.py      # XGBoost training workflow
 ├── requirements.txt        # Python dependencies
+├── requirements-dev.txt    # Test dependencies
 ├── render.yaml            # Render deployment config
 └── README.md              # This file
 ```

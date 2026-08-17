@@ -24,4 +24,4 @@ def test_fetch_kepler_llc_from_archive_uses_local_cache_first(tmp_path):
 
     assert not result.empty
     assert result['filename'].tolist() == ['local_test_file_llc.fits']
-    assert result['local_path'].tolist() == [str(test_file.resolve())]
+    assert os.path.samefile(result['local_path'].iloc[0], test_file)

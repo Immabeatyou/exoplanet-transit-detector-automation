@@ -1,12 +1,7 @@
-from flask import Flask, render_template, request, jsonify, send_file, url_for
-from flask_sqlalchemy import SQLAlchemy
-from datetime import datetime, timezone
+from flask import Flask, render_template, request, jsonify, send_file
 import os
-import sys
 import threading
 import pandas as pd
-import uuid
-from pathlib import Path
 from sqlalchemy import inspect, text
 
 from web.config import config
@@ -269,7 +264,7 @@ def _run_pipeline_job(
             
             print(f"[{run_id}] Running pipeline on {len(targets)} targets...")
             
-            results_df, failures, summary = run_pipeline(
+            results_df, _, summary = run_pipeline(
                 targets=targets,
                 data_dir=app.config['UPLOAD_FOLDER'],
                 export_csv=True,
@@ -333,11 +328,11 @@ def _run_pipeline_job(
             print(f"[{run_id}] Pipeline failed: {str(e)}")
 
 @app.errorhandler(404)
-def not_found(error):
+def not_found(_):
     return render_template('404.html'), 404
 
 @app.errorhandler(500)
-def server_error(error):
+def server_error(_):
     return render_template('500.html'), 500
 
 if __name__ == '__main__':

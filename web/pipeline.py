@@ -118,39 +118,6 @@ def run_detrending(time, flux, kernel_size=101, prominence=0.0002, show_plot=Tru
     smooth = medfilt(flux64, kernel_size=kernel_size)
     smooth[smooth == 0] = np.nan
     flux_detrended = flux64 / smooth
-    finite = np.isfinite(time_clean) & np.isfinite(flux_detrended)
-    bls_time = time_clean[finite]
-    bls_flux = flux_detrended[finite]
-
-    if len(bls_time) >= 100:
-        bls = BoxLeastSquares(bls_time, bls_flux)
-        periods = np.linspace(0.5, 50.0, 2000)
-        durations = np.linspace(0.04, 0.3, 10)
-
-        bls_result = bls.power(periods, durations)
-        best_index = int(np.argmax(bls_result.power))
-
-        bls_period_days = float(bls_result.period[best_index])
-        bls_duration_days = float(bls_result.duration[best_index])
-        bls_depth = float(bls_result.depth[best_index])
-        bls_power = float(bls_result.power[best_index])
-    else:
-        bls_period_days = None
-        bls_duration_days = None
-        bls_depth = None
-        bls_power = None
-
-    total_samples = len(time)
-    valid_samples = int(np.sum(np.isfinite(time) & np.isfinite(flux)))
-    valid_fraction = valid_samples / total_samples if total_samples > 0 else 0.0
-
-    finite_times = time[np.isfinite(time)]
-    observation_baseline_days = (
-        float(np.max(finite_times) - np.min(finite_times))
-        if len(finite_times) >= 2
-        else None
-    )
-
     inv_flux = 1.0 - flux_detrended
     peaks, props = find_peaks(inv_flux, prominence=prominence)
     transit_times = time_clean[peaks]
@@ -214,6 +181,26 @@ def validate_fits_file(file_path, required_columns=["TIME", "PDCSAP_FLUX"]):
         return True, None
     except Exception as e:
         return False, f"FITS validation error: {str(e)}"
+
+
+def classify_review_status(
+    final_ranking_score,
+    period_stability_flag,
+    quality_flag,
+    review_threshold,
+    review_now_threshold,
+):
+    if (
+        final_ranking_score >= review_now_threshold
+        and period_stability_flag in ["stable", "moderate"]
+        and quality_flag in ["high_confidence", "medium_confidence"]
+    ):
+        return "review_now", "very high score with acceptable stability/confidence"
+    if final_ranking_score >= review_threshold:
+        return "review_with_caution", "above threshold with weaker supporting signals"
+    return "low_priority", "below review threshold or weak supporting signals"
+
+
 def run_pipeline(
     targets, 
     data_dir="/Users/adarsh/Downloads/", 
@@ -479,22 +466,13 @@ def run_pipeline(
             elif period_stability_flag == "unstable":
                 final_ranking_score = max(0.0, final_ranking_score - 20.0)
 
-            if (
-                final_ranking_score >= 90
-                and period_stability_flag in ["stable", "moderate"]
-                and quality_flag in ["high_confidence", "medium_confidence"]
-            ):
-                review_status = "review_now"
-                review_reason = "very high score with acceptable stability/confidence"
-            elif final_ranking_score >= 75:
-                review_status = "review_with_caution"
-                review_reason = "strong score but needs additional validation"
-            elif final_ranking_score >= review_threshold:
-                review_status = "review_with_caution"
-                review_reason = "above threshold with weaker supporting signals"
-            else:
-                review_status = "low_priority"
-                review_reason = "below review threshold or weak supporting signals"
+            review_status, review_reason = classify_review_status(
+                final_ranking_score=final_ranking_score,
+                period_stability_flag=period_stability_flag,
+                quality_flag=quality_flag,
+                review_threshold=review_threshold,
+                review_now_threshold=review_now_threshold,
+            )
                 
             rows.append({
                 "target": target,
@@ -775,7 +753,7 @@ def download_file(url, out_path, timeout=30):
         if os.path.exists(out_path):
             os.remove(out_path)
         raise TimeoutError(f"Download timeout (>{timeout}s): {url}")
-    except Exception as e:
+    except Exception:
         if os.path.exists(out_path):
             os.remove(out_path)
         raise

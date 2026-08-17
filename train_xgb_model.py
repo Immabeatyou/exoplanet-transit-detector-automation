@@ -48,7 +48,6 @@ print(f"Loaded {len(confirmed_kic_ids)} confirmed and {len(false_positive_kic_id
 def fetch_labelled_lightcurves(n_per_class, download_dir, files_per_kic=1):
     """Download light curves for known CONFIRMED and FALSE POSITIVE KICs."""
     import random
-    import re
     from web.pipeline import BASE_URL, download_file, fetch_links
 
     koi = pd.read_csv(KOI_LABELS_CSV)
