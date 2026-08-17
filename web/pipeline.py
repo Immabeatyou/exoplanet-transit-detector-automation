@@ -201,6 +201,25 @@ def classify_review_status(
     return "low_priority", "below review threshold or weak supporting signals"
 
 
+def classify_ml_review_status(
+    probability,
+    model_threshold,
+    review_status,
+    period_stability_flag,
+):
+    review_now_threshold = max(float(model_threshold), 0.50)
+
+    if probability < 0.40:
+        return "low_priority"
+    if (
+        probability >= review_now_threshold
+        and review_status != "low_priority"
+        and period_stability_flag != "unstable"
+    ):
+        return "review_now"
+    return "review_with_caution"
+
+
 def run_pipeline(
     targets, 
     data_dir="/Users/adarsh/Downloads/", 
@@ -590,11 +609,17 @@ def run_pipeline(
     results_df["ml_review_status"] = "model_unavailable"
 
     valid_ml = results_df["ml_probability"].notna()
-    results_df.loc[valid_ml, "ml_review_status"] = pd.cut(
-        results_df.loc[valid_ml, "ml_probability"],
-        bins=[-0.01, 0.40, model_threshold, 1.0],
-        labels=["low_priority", "review_with_caution", "review_now"],
-    ).astype(str)
+    results_df.loc[valid_ml, "ml_review_status"] = results_df.loc[
+        valid_ml
+    ].apply(
+        lambda row: classify_ml_review_status(
+            probability=row["ml_probability"],
+            model_threshold=model_threshold,
+            review_status=row["review_status"],
+            period_stability_flag=row["period_stability_flag"],
+        ),
+        axis=1,
+    )
 
     if not results_df.empty and "final_ranking_score" in results_df.columns:
         results_df = results_df.sort_values("final_ranking_score", ascending=False).reset_index(drop=True)
