@@ -808,6 +808,7 @@ def fetch_kepler_llc_from_archive(
     randomize=True, 
     random_seed=None,
     exclude_filenames=None,
+    max_duration_seconds=None,
 ):
     """
     Crawl Kepler archive website and download LLC FITS files.
@@ -819,6 +820,7 @@ def fetch_kepler_llc_from_archive(
     randomize (bool): Shuffle bucket/target selection for variety
     random_seed (int, optional): Seed for reproducible selection. None = different each run.
     exclude_filenames (set, optional): Filenames to skip (for non-repeating runs)
+    max_duration_seconds (float, optional): Stop remote archive traversal after this duration.
     ---------------------------------------------------------------------------------------------------------
     Returns:
     DataFrame: Columns: filename, local_path, source_url, size_mb
@@ -856,6 +858,14 @@ def fetch_kepler_llc_from_archive(
     seen = set()
 
     rng = random.Random(random_seed)
+    deadline = (
+        time.monotonic() + max_duration_seconds
+        if max_duration_seconds is not None
+        else None
+    )
+
+    def archive_time_remaining():
+        return deadline is None or time.monotonic() < deadline
 
     try:
         bucket_dirs = list_bucket_dirs()
@@ -865,6 +875,9 @@ def fetch_kepler_llc_from_archive(
 
         bucket_targets = []
         for bucket in bucket_dirs:
+            if not archive_time_remaining():
+                print("Archive scan time limit reached while listing buckets.")
+                break
             try:
                 target_dirs = list_target_dirs(bucket)
                 rng.shuffle(target_dirs)
@@ -874,7 +887,12 @@ def fetch_kepler_llc_from_archive(
 
         # Rotate through buckets so the first pass covers as much of MAST as possible.
         for round_index in range(max((len(targets) for targets in bucket_targets), default=0)):
+            if not archive_time_remaining():
+                print("Archive scan time limit reached while listing targets.")
+                break
             for target_dirs in bucket_targets:
+                if not archive_time_remaining():
+                    break
                 if len(rows) >= target_count:
                     break
                 if round_index >= len(target_dirs):
@@ -893,6 +911,8 @@ def fetch_kepler_llc_from_archive(
                     continue
 
                 for file_url in llc_urls:
+                    if not archive_time_remaining():
+                        break
                     if len(rows) >= target_count:
                         break
 

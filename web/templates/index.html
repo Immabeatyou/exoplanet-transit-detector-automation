@@ -201,13 +201,22 @@ document.getElementById('pipelineForm').addEventListener('submit', async (e) => 
         const pollInterval = setInterval(async () => {
             const statusResp = await fetch(`/api/run/${runId}`);
             const status = await statusResp.json();
-            document.getElementById('statusMessage').textContent = `Status: ${status.status} | Processed: ${status.processed} | Succeeded: ${status.succeeded}`;
+            const statusText = status.status === 'fetching'
+                ? 'Checking local light curves, then contacting the Kepler archive if needed...'
+                : `Status: ${status.status} | Processed: ${status.processed} | Succeeded: ${status.succeeded}`;
+            document.getElementById('statusMessage').textContent = status.message
+                ? `Status: ${status.status} | ${status.message}`
+                : statusText;
             
-            if (status.status === 'completed' || status.status === 'failed') {
+            if (status.status === 'completed') {
                 clearInterval(pollInterval);
                 setTimeout(() => {
                     window.location.href = `/results/${runId}`;
                 }, 2000);
+            }
+
+            if (status.status === 'failed') {
+                clearInterval(pollInterval);
             }
         }, 2000);
         

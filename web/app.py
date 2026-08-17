@@ -110,6 +110,7 @@ def api_get_run_status(run_id):
     return jsonify({
         'id': run.id,
         'status': run.status,
+        'message': run.error_message,
         'timestamp': run.run_timestamp.isoformat(),
         'processed': run.processed_count,
         'succeeded': run.succeeded_count,
@@ -221,22 +222,31 @@ def _run_pipeline_job(
     try:
         with app.app_context():
             run = PipelineRun.query.get(run_id)
-            run.status = 'running'
+            run.status = 'fetching'
             db.session.commit()
             
             # Get targets
             if source == 'archive':
-                print(f"[{run_id}] Fetching {targets_or_count} targets from Kepler archive (max 5 min timeout)...")
+                print(f"[{run_id}] Checking local FITS cache for up to {targets_or_count} targets...")
                 try:
                     downloads_df = fetch_kepler_llc_from_archive(
                         target_count=targets_or_count,
                         download_dir=app.config['UPLOAD_FOLDER'],
-                        max_buckets=max(20, targets_or_count * 2),
-                        randomize=True,
-                        random_seed=None
+                        max_buckets=0,
+                        randomize=False,
                     )
+                    if downloads_df.empty:
+                        print(f"[{run_id}] Local cache is empty; querying Kepler archive...")
+                        downloads_df = fetch_kepler_llc_from_archive(
+                            target_count=targets_or_count,
+                            download_dir=app.config['UPLOAD_FOLDER'],
+                            max_buckets=min(5, max(1, targets_or_count)),
+                            randomize=True,
+                            random_seed=None,
+                            max_duration_seconds=120,
+                        )
                     targets = downloads_df['filename'].tolist()
-                    print(f"[{run_id}] Downloaded {len(targets)} files from archive")
+                    print(f"[{run_id}] Ready to process {len(targets)} light curve(s)")
                 except Exception as archive_error:
                     print(f"[{run_id}] Archive download failed or timed out: {archive_error}. Continuing with 0 targets.")
                     targets = []
@@ -262,6 +272,9 @@ def _run_pipeline_job(
                 targets = targets_or_count
                 downloads_df = pd.DataFrame()
             
+            run = PipelineRun.query.get(run_id)
+            run.status = 'running'
+            db.session.commit()
             print(f"[{run_id}] Running pipeline on {len(targets)} targets...")
             
             results_df, _, summary = run_pipeline(
