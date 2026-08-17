@@ -2,7 +2,6 @@ import glob
 import json
 import os
 import pandas as pd
-import requests
 from sklearn.metrics import classification_report, roc_auc_score, precision_recall_curve
 from xgboost import XGBClassifier
 from sklearn.model_selection import GroupShuffleSplit, train_test_split, GroupKFold, KFold, cross_val_score, RandomizedSearchCV
@@ -19,7 +18,12 @@ def load_koi_labels():
     if not os.path.exists(KOI_LABELS_CSV):
         print("Fetching KOI dispositions from NASA Exoplanet Archive...")
         try:
-            response = requests.get(KOI_TAP_URL, timeout=120)
+            from web.pipeline import create_archive_session
+
+            response = create_archive_session().get(
+                KOI_TAP_URL,
+                timeout=(10, 60),
+            )
             response.raise_for_status()
             with open(KOI_LABELS_CSV, "w") as handle:
                 handle.write(response.text)

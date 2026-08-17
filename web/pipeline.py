@@ -13,6 +13,8 @@ import random
 import uuid
 import json
 import time
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 """
 Exoplanet Transit Detection Research Pipeline
 ---------------------------------------------------------------------------------------------------------
@@ -45,6 +47,31 @@ DOWNLOAD_DIR = "./kepler_llc_downloads"
 os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 
 print("Download folder:", os.path.abspath(DOWNLOAD_DIR))
+
+
+def create_archive_session(retries=3, backoff_factor=1.0):
+    """Create a session that retries transient archive failures with backoff."""
+    retry_policy = Retry(
+        total=retries,
+        connect=retries,
+        read=retries,
+        status=retries,
+        backoff_factor=backoff_factor,
+        status_forcelist=(429, 500, 502, 503, 504),
+        allowed_methods=frozenset(["GET"]),
+        raise_on_status=False,
+    )
+    session = requests.Session()
+    adapter = HTTPAdapter(max_retries=retry_policy)
+    session.mount("https://", adapter)
+    session.mount("http://", adapter)
+    session.headers.update({"User-Agent": "exoplanet-transit-research/1.0"})
+    return session
+
+
+ARCHIVE_SESSION = create_archive_session()
+
+
 def parse_args(argv=None):
     """
     Parse command-line arguments for the transit detection pipeline.
@@ -733,22 +760,16 @@ def save_seen_targets(filenames, path=SEEN_TARGETS_CSV):
 def clear_seen_targets(path=SEEN_TARGETS_CSV):
     if os.path.exists(path):
         os.remove(path)
-def fetch_links(url, timeout=30, retries=3):
+def fetch_links(url, timeout=(10, 30)):
     """Fetch archive links with retries so one slow response does not look empty."""
-    last_error = None
-    for attempt in range(1, retries + 1):
-        try:
-            resp = requests.get(url, timeout=(10, timeout))
-            resp.raise_for_status()
-            hrefs = re.findall(r'href="([^"]+)"', resp.text, flags=re.IGNORECASE)
-            return [urljoin(url, h) for h in hrefs if h not in ("../", "./")]
-        except requests.RequestException as exc:
-            last_error = exc
-            print(f"Archive request {attempt}/{retries} failed for {url}: {exc}")
-            if attempt < retries:
-                time.sleep(1)
+    try:
+        response = ARCHIVE_SESSION.get(url, timeout=timeout)
+        response.raise_for_status()
+    except requests.RequestException as exc:
+        raise RuntimeError(f"Could not fetch archive index: {url}: {exc}") from exc
 
-    raise RuntimeError(f"Could not fetch archive index after {retries} attempts: {last_error}")
+    hrefs = re.findall(r'href="([^"]+)"', response.text, flags=re.IGNORECASE)
+    return [urljoin(url, href) for href in hrefs if href not in ("../", "./")]
 
 def list_bucket_dirs(base_url=BASE_URL):
     links = fetch_links(base_url)
@@ -765,20 +786,20 @@ def list_llc_files(target_dir_url):
     links = fetch_links(target_dir_url)
     return [u for u in links if u.lower().endswith("_llc.fits")]
 
-def download_file(url, out_path, timeout=30):
-    """Download file with aggressive timeout."""
+def download_file(url, out_path, timeout=(10, 60)):
+    """Download a FITS file with retried connect and read timeouts."""
     try:
-        with requests.get(url, stream=True, timeout=timeout) as r:
-            r.raise_for_status()
-            with open(out_path, "wb") as f:
-                for chunk in r.iter_content(chunk_size=1024 * 1024):
+        with ARCHIVE_SESSION.get(url, stream=True, timeout=timeout) as response:
+            response.raise_for_status()
+            with open(out_path, "wb") as output_file:
+                for chunk in response.iter_content(chunk_size=1024 * 1024):
                     if chunk:
-                        f.write(chunk)
-    except requests.Timeout:
+                        output_file.write(chunk)
+    except requests.Timeout as exc:
         if os.path.exists(out_path):
             os.remove(out_path)
-        raise TimeoutError(f"Download timeout (>{timeout}s): {url}")
-    except Exception:
+        raise TimeoutError(f"Download timed out for {url}") from exc
+    except requests.RequestException:
         if os.path.exists(out_path):
             os.remove(out_path)
         raise
