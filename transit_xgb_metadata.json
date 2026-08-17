@@ -28,13 +28,13 @@
     "colsample_bytree": 0.8
   },
   "best_threshold": 0.41,
-  "mean_cv_roc_auc": 0.7362814566930727,
-  "std_cv_roc_auc": 0.027400836805568436,
-  "test_roc_auc": 0.739090909090909,
+  "mean_cv_roc_auc": 0.7445329944788768,
+  "std_cv_roc_auc": 0.0156859127602974,
+  "test_roc_auc": 0.763026302630263,
   "label_counts": {
-    "0": 507,
-    "1": 492
+    "0": 1016,
+    "1": 981
   },
-  "training_rows": 999,
-  "real_label_matches": 492
+  "training_rows": 1997,
+  "real_label_matches": 981
 }
