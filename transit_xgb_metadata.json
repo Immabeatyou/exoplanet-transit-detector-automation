@@ -21,20 +21,20 @@
     "period_agreement"
   ],
   "best_params": {
-    "subsample": 0.7,
-    "n_estimators": 300,
-    "max_depth": 3,
-    "learning_rate": 0.05,
-    "colsample_bytree": 1.0
+    "subsample": 0.8,
+    "n_estimators": 500,
+    "max_depth": 4,
+    "learning_rate": 0.03,
+    "colsample_bytree": 0.7
   },
   "best_threshold": 0.41,
-  "mean_cv_roc_auc": 0.7772785376739979,
-  "std_cv_roc_auc": 0.009234906909081905,
-  "test_roc_auc": 0.7489207221350079,
+  "mean_cv_roc_auc": 0.7931609351612192,
+  "std_cv_roc_auc": 0.0047678050546027285,
+  "test_roc_auc": 0.7944932326308745,
   "label_counts": {
-    "0": 4702,
-    "1": 1938
+    "0": 10052,
+    "1": 7702
   },
-  "training_rows": 6640,
-  "real_label_matches": 1938
+  "training_rows": 17754,
+  "real_label_matches": 7702
 }

@@ -76,6 +76,8 @@ def fetch_labelled_lightcurves(n_per_class, download_dir, files_per_kic=1):
                 continue
 
             for file_url in urls[:files_per_kic]:
+                if collected >= n_per_class:
+                    break
                 fname = os.path.basename(file_url)
                 local_path = os.path.join(download_dir, fname)
                 try:
@@ -96,7 +98,8 @@ if __name__ != "__main__":
 
 GENERATE_DATA = True
 TARGETED_LABELS = True
-N_PER_CLASS = 5000
+N_PER_CLASS = 10000
+FILES_PER_KIC = 4
 
 if GENERATE_DATA:
     print("GENERATING TRAINING DATA FROM KEPLER ARCHIVE")
@@ -112,8 +115,9 @@ if GENERATE_DATA:
     os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 
     if TARGETED_LABELS:
-        print(f"\nDownloading {N_PER_CLASS} confirmed + {N_PER_CLASS} false-positive light curves...\n")
-        downloads_df = fetch_labelled_lightcurves(N_PER_CLASS, DOWNLOAD_DIR)
+        print(f"\nDownloading up to {N_PER_CLASS} confirmed + {N_PER_CLASS} false-positive light curves "
+              f"({FILES_PER_KIC} quarters/star max)...\n")
+        downloads_df = fetch_labelled_lightcurves(N_PER_CLASS, DOWNLOAD_DIR, files_per_kic=FILES_PER_KIC)
     else:
         print("\nDownloading random Kepler light curves from archive...")
         print("(This may take 10-30 minutes depending on network speed)\n")
