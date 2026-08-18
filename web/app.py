@@ -208,6 +208,35 @@ def api_get_history():
     }), 200
 
 
+def fetch_archive_targets(target_count, download_dir):
+    downloads_df = fetch_kepler_llc_from_archive(
+        target_count=target_count,
+        download_dir=download_dir,
+        max_buckets=0,
+        randomize=False,
+    )
+    cached_count = len(downloads_df)
+
+    if cached_count < target_count:
+        remaining_count = target_count - cached_count
+        print(
+            f"Found {cached_count} cached light curve(s); "
+            f"querying Kepler archive for {remaining_count} more..."
+        )
+        archive_downloads = fetch_kepler_llc_from_archive(
+            target_count=remaining_count,
+            download_dir=download_dir,
+            max_buckets=min(5, max(1, remaining_count)),
+            randomize=True,
+            random_seed=None,
+            max_duration_seconds=120,
+            exclude_filenames=set(downloads_df["filename"]),
+        )
+        downloads_df = pd.concat([downloads_df, archive_downloads], ignore_index=True)
+
+    return downloads_df.drop_duplicates(subset="filename", keep="first")
+
+
 def _run_pipeline_job(
         run_id, 
         source, 
@@ -229,22 +258,10 @@ def _run_pipeline_job(
             if source == 'archive':
                 print(f"[{run_id}] Checking local FITS cache for up to {targets_or_count} targets...")
                 try:
-                    downloads_df = fetch_kepler_llc_from_archive(
+                    downloads_df = fetch_archive_targets(
                         target_count=targets_or_count,
                         download_dir=app.config['UPLOAD_FOLDER'],
-                        max_buckets=0,
-                        randomize=False,
                     )
-                    if downloads_df.empty:
-                        print(f"[{run_id}] Local cache is empty; querying Kepler archive...")
-                        downloads_df = fetch_kepler_llc_from_archive(
-                            target_count=targets_or_count,
-                            download_dir=app.config['UPLOAD_FOLDER'],
-                            max_buckets=min(5, max(1, targets_or_count)),
-                            randomize=True,
-                            random_seed=None,
-                            max_duration_seconds=120,
-                        )
                     targets = downloads_df['filename'].tolist()
                     print(f"[{run_id}] Ready to process {len(targets)} light curve(s)")
                 except Exception as archive_error:
